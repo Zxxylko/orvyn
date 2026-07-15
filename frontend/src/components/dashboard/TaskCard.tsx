@@ -7,14 +7,17 @@ import {
   Circle, 
   Trash2,
   AlertCircle,
-  Zap
+  Zap,
+  Loader2
 } from 'lucide-react';
 import { format, isPast } from 'date-fns';
+import { useEffect, useState } from 'react';
 
 interface TaskCardProps {
   task: Task;
-  onToggle: (id: string) => void;
-  onDelete: (id: string) => void;
+  onToggle: (id: string) => Promise<void> | void;
+  onDelete: (id: string) => Promise<void> | void;
+  onOpen?: (task: Task) => void;
 }
 
 const priorityColors = {
@@ -31,16 +34,49 @@ const priorityBadgeColors = {
   critical: 'bg-red-500/20 text-red-300',
 };
 
-export function TaskCard({ task, onToggle, onDelete }: TaskCardProps) {
+export function TaskCard({ task, onToggle, onDelete, onOpen }: TaskCardProps) {
   const isOverdue = task.deadline && isPast(new Date(task.deadline)) && task.status !== 'completed';
   const isCompleted = task.status === 'completed';
+  const [pendingAction, setPendingAction] = useState<'toggle' | 'delete' | null>(null);
+  const [deleteArmed, setDeleteArmed] = useState(false);
+
+  useEffect(() => {
+    if (!deleteArmed) return;
+    const timer = window.setTimeout(() => setDeleteArmed(false), 3000);
+    return () => window.clearTimeout(timer);
+  }, [deleteArmed]);
+
+  const handleToggle = async () => {
+    if (pendingAction) return;
+    setPendingAction('toggle');
+    try {
+      await onToggle(task.id);
+    } finally {
+      setPendingAction(null);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteArmed) {
+      setDeleteArmed(true);
+      return;
+    }
+
+    setPendingAction('delete');
+    try {
+      await onDelete(task.id);
+    } finally {
+      setPendingAction(null);
+      setDeleteArmed(false);
+    }
+  };
 
   return (
     <motion.div
       layout
-      initial={{ opacity: 0, scale: 0.9 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.9 }}
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -4 }}
       whileHover={{ y: -2 }}
       whileTap={{ scale: 0.99 }}
       transition={{ duration: 0.18, ease: 'easeOut' }}
@@ -56,10 +92,15 @@ export function TaskCard({ task, onToggle, onDelete }: TaskCardProps) {
       {/* Header */}
       <div className="flex items-start gap-3">
         <button
-          onClick={() => onToggle(task.id)}
-          className="mt-1 flex-shrink-0 hover:scale-110 transition-transform"
+          type="button"
+          onClick={() => void handleToggle()}
+          disabled={pendingAction !== null}
+          className="focus-ring mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg transition hover:bg-white/10 disabled:cursor-wait disabled:opacity-60"
+          aria-label={isCompleted ? `Tandai ${task.title} belum selesai` : `Tandai ${task.title} selesai`}
         >
-          {isCompleted ? (
+          {pendingAction === 'toggle' ? (
+            <Loader2 className="h-4 w-4 animate-spin text-cyan-300" />
+          ) : isCompleted ? (
             <CheckCircle2 className="w-5 h-5 text-green-400" />
           ) : (
             <Circle className="w-5 h-5 text-white/40 hover:text-white/60" />
@@ -67,9 +108,14 @@ export function TaskCard({ task, onToggle, onDelete }: TaskCardProps) {
         </button>
 
         <div className="flex-1 min-w-0">
-          <h3 className={`text-sm font-medium ${isCompleted ? 'line-through text-white/40' : 'text-white'}`}>
+          <button
+            type="button"
+            onClick={() => onOpen?.(task)}
+            className={`focus-ring -ml-1 rounded-md px-1 text-left text-sm font-medium transition hover:text-cyan-200 ${isCompleted ? 'line-through text-white/40' : 'text-white'}`}
+            aria-label={`Buka detail ${task.title}`}
+          >
             {task.title}
-          </h3>
+          </button>
           
           {task.description && (
             <p className="mt-1 text-xs text-white/60 line-clamp-2">
@@ -122,10 +168,21 @@ export function TaskCard({ task, onToggle, onDelete }: TaskCardProps) {
 
         {/* Delete button */}
         <button
-          onClick={() => onDelete(task.id)}
-          className="opacity-0 group-hover:opacity-100 transition-opacity hover:text-red-400"
+          type="button"
+          onClick={() => void handleDelete()}
+          disabled={pendingAction !== null}
+          className={`focus-ring flex h-8 items-center justify-center rounded-lg px-2 text-xs font-bold transition sm:opacity-0 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100 ${
+            deleteArmed ? 'bg-red-500/15 text-red-300 opacity-100' : 'text-white/35 hover:bg-red-500/10 hover:text-red-400'
+          }`}
+          aria-label={deleteArmed ? `Konfirmasi hapus ${task.title}` : `Hapus ${task.title}`}
         >
-          <Trash2 className="w-4 h-4" />
+          {pendingAction === 'delete' ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : deleteArmed ? (
+            'Yakin?'
+          ) : (
+            <Trash2 className="h-4 w-4" />
+          )}
         </button>
       </div>
     </motion.div>

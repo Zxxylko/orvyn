@@ -3,6 +3,8 @@ import { TimeBlockCard } from './TimeBlockCard';
 import { format, startOfWeek, addDays, isSameDay } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useEffect, useMemo, useRef } from 'react';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { quietEase } from '@/components/ui/motion-config';
 
 interface TimeBlockGridProps {
   timeBlocks: TimeBlock[];
@@ -19,6 +21,7 @@ export function TimeBlockGrid({
   currentDate,
   density = 'comfort',
 }: TimeBlockGridProps) {
+  const shouldReduceMotion = useReducedMotion();
   // Hours to show in calendar (8 AM to 8 PM)
   const startHour = 8;
   const endHour = 20;
@@ -45,9 +48,9 @@ export function TimeBlockGrid({
     const currentHourOffset = Math.max(0, currentHour - startHour - 1);
     scrollContainerRef.current.scrollTo({
       top: currentHourOffset * cellHeight,
-      behavior: 'smooth',
+      behavior: shouldReduceMotion ? 'auto' : 'smooth',
     });
-  }, [cellHeight, currentDate, currentHour]);
+  }, [cellHeight, currentDate, currentHour, shouldReduceMotion]);
 
   // Position helpers
   const getPositionStyles = (block: TimeBlock) => {
@@ -160,20 +163,30 @@ export function TimeBlockGrid({
               </div>
             )}
 
+            <AnimatePresence initial={false}>
             {timeBlocks.map((block) => {
               const style = getPositionStyles(block);
               if (!style) return null;
 
               return (
-                <div key={block.id} className="absolute pointer-events-auto" style={style}>
+                <motion.div
+                  key={block.id}
+                  className="absolute pointer-events-auto"
+                  style={style}
+                  initial={shouldReduceMotion ? false : { opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
+                  transition={shouldReduceMotion ? { duration: 0 } : { duration: 0.22, ease: quietEase }}
+                >
                   <TimeBlockCard
                     block={block}
                     onClick={() => onBlockClick(block)}
                     style={{ width: '100%', height: '100%', top: 0, left: 0 }}
                   />
-                </div>
+                </motion.div>
               );
             })}
+            </AnimatePresence>
           </div>
         </div>
       </div>

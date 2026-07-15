@@ -33,7 +33,7 @@ export function useTasks() {
         if (prev.some((t) => t.id === newTask.id)) return prev;
         return [...prev, newTask];
       });
-      toast.success('Task created successfully!');
+      toast.success('Tugas berhasil dibuat.');
       return newTask;
     } catch (err: unknown) {
       const message = getApiErrorMessage(err, 'Failed to create task');
@@ -42,33 +42,54 @@ export function useTasks() {
     }
   }, []);
 
-  const updateTask = useCallback(async (id: string, data: Partial<Task>) => {
+  const updateTask = useCallback(async (id: string, data: Partial<Task>, options?: { silent?: boolean }) => {
+    const previousTask = tasks.find((task) => task.id === id);
+    setTasks((prev) => prev.map((task) => task.id === id
+      ? { ...task, ...data, updated_at: new Date().toISOString() }
+      : task));
+
     try {
       const response = await taskApi.updateTask(id, data);
       const updatedTask = response.data.data;
       setTasks((prev) =>
         prev.map((task) => (task.id === id ? updatedTask : task))
       );
-      toast.success('Task updated!');
+      if (!options?.silent) toast.success('Perubahan tugas tersimpan.');
       return updatedTask;
     } catch (err: unknown) {
+      if (previousTask) {
+        const rollbackTask = previousTask;
+        setTasks((prev) => prev.map((task) => (task.id === id ? rollbackTask : task)));
+      }
       const message = getApiErrorMessage(err, 'Failed to update task');
       toast.error(message);
       throw err;
     }
-  }, []);
+  }, [tasks]);
 
   const deleteTask = useCallback(async (id: string) => {
+    const deletedIndex = tasks.findIndex((task) => task.id === id);
+    const deletedTask = tasks[deletedIndex];
+    setTasks((prev) => prev.filter((task) => task.id !== id));
+
     try {
       await taskApi.deleteTask(id);
-      setTasks((prev) => prev.filter((task) => task.id !== id));
-      toast.success('Task deleted!');
+      toast.success('Tugas berhasil dihapus.');
     } catch (err: unknown) {
+      if (deletedTask) {
+        const rollbackTask = deletedTask;
+        setTasks((prev) => {
+          if (prev.some((task) => task.id === rollbackTask.id)) return prev;
+          const next = [...prev];
+          next.splice(Math.max(0, deletedIndex), 0, rollbackTask);
+          return next;
+        });
+      }
       const message = getApiErrorMessage(err, 'Failed to delete task');
       toast.error(message);
       throw err;
     }
-  }, []);
+  }, [tasks]);
 
   const toggleTaskStatus = useCallback(async (id: string, customStatus?: 'pending' | 'in_progress' | 'completed' | 'cancelled') => {
     const task = tasks.find((t) => t.id === id);

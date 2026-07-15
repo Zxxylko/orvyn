@@ -1,10 +1,48 @@
-import { motion } from 'framer-motion';
+import type { Key, ReactNode } from 'react';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+
+interface MotionCrossfadeProps {
+  stateKey: Key;
+  children: ReactNode;
+  className?: string;
+  mode?: 'sync' | 'wait';
+}
+
+/** Keeps loading and loaded states in the same motion boundary for a clean handoff. */
+export function MotionCrossfade({
+  stateKey,
+  children,
+  className,
+  mode = 'wait',
+}: MotionCrossfadeProps) {
+  const shouldReduceMotion = useReducedMotion();
+
+  return (
+    <AnimatePresence initial={false} mode={mode}>
+      <motion.div
+        key={stateKey}
+        initial={shouldReduceMotion ? false : { opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: shouldReduceMotion ? 1 : 0 }}
+        transition={{
+          duration: shouldReduceMotion ? 0 : 0.1,
+          ease: [0.22, 1, 0.36, 1],
+        }}
+        className={className}
+      >
+        {children}
+      </motion.div>
+    </AnimatePresence>
+  );
+}
 
 export function SkeletonPulse({ className }: { className?: string }) {
+  const shouldReduceMotion = useReducedMotion();
+
   return (
     <motion.div
-      animate={{ opacity: [0.35, 0.65, 0.35] }}
-      transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+      animate={shouldReduceMotion ? { opacity: 0.5 } : { opacity: [0.35, 0.65, 0.35] }}
+      transition={shouldReduceMotion ? { duration: 0 } : { duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
       className={`bg-white/10 dark:bg-white/5 backdrop-blur-md rounded-lg ${className}`}
     />
   );

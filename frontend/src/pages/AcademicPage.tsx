@@ -1,12 +1,15 @@
 import { useState } from 'react';
 import { useAcademic } from '@/hooks/useAcademic';
-import { SkeletonPulse } from '@/components/ui/UXSkeletons';
+import { MotionCrossfade, SkeletonPulse } from '@/components/ui/UXSkeletons';
 import type { AcademicTask, AcademicTaskType } from '@/types/telu';
 import { 
   GraduationCap, Plus, Calendar, CheckCircle2, Circle, Trash2, 
   ExternalLink, Loader2, Sparkles, BookOpen, AlertCircle, Edit2, X
 } from 'lucide-react';
 import { format, isPast } from 'date-fns';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { MotionCollapse, MotionModal, ScrollReveal } from '@/components/ui/motion';
+import { quietEase } from '@/components/ui/motion-config';
 
 export function AcademicPage() {
   const { tasks, loading, createTask, updateTask, deleteTask } = useAcademic();
@@ -22,6 +25,7 @@ export function AcademicPage() {
   const [deadline, setDeadline] = useState('');
   const [lmsUrl, setLmsUrl] = useState('');
   const [formSubmitting, setFormSubmitting] = useState(false);
+  const shouldReduceMotion = useReducedMotion();
 
   const resetForm = () => {
     setCourseName('');
@@ -111,8 +115,8 @@ export function AcademicPage() {
             <GraduationCap size={28} />
           </div>
           <div>
-            <h1 className="text-xl font-black text-white">Tel-U Academic Tracker</h1>
-            <p className="text-xs text-slate-400">Manage Informatics assignments, laboratory milestones, and Tugas Besar</p>
+            <h1 className="text-xl font-black text-white">Tracker Akademik Tel-U</h1>
+            <p className="text-xs text-slate-400">Kelola tugas, praktikum, ujian, dan Tugas Besar dalam satu tempat.</p>
           </div>
         </div>
         <button
@@ -120,12 +124,12 @@ export function AcademicPage() {
           className="flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-slate-950 transition hover:bg-slate-100 cursor-pointer"
         >
           <Plus size={16} />
-          {showAddForm ? 'Close Form' : 'Log Assignment'}
+          {showAddForm ? 'Tutup Form' : 'Tambah Tugas'}
         </button>
       </div>
 
       {/* Collapsible Assignment Input Form */}
-      {showAddForm && (
+      <MotionCollapse open={showAddForm} motionKey="academic-task-form">
         <form onSubmit={handleSubmit} className="p-6 rounded-2xl bg-slate-900/60 border border-white/10 backdrop-blur-xl shadow-2xl space-y-4">
           <div className="flex items-center gap-2 mb-2 text-purple-300 text-xs font-extrabold uppercase tracking-widest">
             <Sparkles size={14} className="animate-pulse" /> {editingTask ? 'Edit Academic Milestone' : 'Add Academic Milestone'}
@@ -220,57 +224,64 @@ export function AcademicPage() {
               }}
               className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-bold text-slate-400 transition"
             >
-              Cancel
+              Batal
             </button>
             <button
               type="submit"
               disabled={formSubmitting}
               className="px-6 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-xs font-bold text-white transition flex items-center gap-2"
             >
-              {formSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : editingTask ? 'Update & Sync' : 'Log & Sync'}
+              {formSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : editingTask ? 'Simpan Perubahan' : 'Simpan Tugas'}
             </button>
           </div>
         </form>
-      )}
+      </MotionCollapse>
 
       {/* Main Grid Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <ScrollReveal className="grid grid-cols-1 gap-6 lg:grid-cols-3" amount={0.08}>
         {/* Left Columns: Tasks Matrix (Takes 2 cols) */}
         <div className="lg:col-span-2 space-y-6">
-          {loading ? (
-            <div className="space-y-3">
-              <SkeletonPulse className="h-20 rounded-xl" />
-              <SkeletonPulse className="h-20 rounded-xl" />
-              <SkeletonPulse className="h-20 rounded-xl" />
-            </div>
-          ) : tasks.length === 0 ? (
-            <div className="p-12 rounded-2xl bg-white/5 border border-white/10 text-center space-y-3">
-              <BookOpen className="w-12 h-12 text-slate-600 mx-auto" />
-              <h3 className="text-sm font-bold text-white">No academic milestones yet</h3>
-              <p className="text-xs text-slate-400">Click the button above to log your first practical lab or tubes!</p>
-              <button
-                type="button"
-                onClick={openCreateForm}
-                className="rounded-xl bg-white px-4 py-2 text-xs font-semibold text-slate-950 transition hover:bg-slate-100"
-              >
-                Log first assignment
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-6">
+          <MotionCrossfade stateKey={loading ? 'loading' : tasks.length === 0 ? 'empty' : 'content'}>
+            {loading ? (
+              <div className="space-y-3">
+                <SkeletonPulse className="h-20 rounded-xl" />
+                <SkeletonPulse className="h-20 rounded-xl" />
+                <SkeletonPulse className="h-20 rounded-xl" />
+              </div>
+            ) : tasks.length === 0 ? (
+              <div className="p-12 rounded-2xl bg-white/5 border border-white/10 text-center space-y-3">
+                <BookOpen className="w-12 h-12 text-slate-600 mx-auto" />
+                <h3 className="text-sm font-bold text-white">Belum ada tugas akademik</h3>
+                <p className="text-xs text-slate-400">Mulai dengan praktikum, tugas kuliah, atau Tugas Besar pertamamu.</p>
+                <button
+                  type="button"
+                  onClick={openCreateForm}
+                  className="rounded-xl bg-white px-4 py-2 text-xs font-semibold text-slate-950 transition hover:bg-slate-100"
+                >
+                  Tambahkan tugas pertama
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-6">
               {/* Active milestones */}
               {activeTasks.length > 0 && (
                 <div className="space-y-3">
                   <h3 className="sticky top-0 z-10 flex items-center gap-1.5 bg-slate-950/90 py-2 text-[10px] font-extrabold text-slate-500 uppercase tracking-widest mb-1 backdrop-blur-xl">
                     <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse"></span>
-                    Active Academic Tasks ({activeTasks.length})
+                    Tugas Akademik Aktif ({activeTasks.length})
                   </h3>
                   <div className="grid gap-3">
+                    <AnimatePresence initial={false} mode="popLayout">
                     {activeTasks.map((task) => {
                       const isOverdue = task.deadline && isPast(new Date(task.deadline));
                       return (
-                        <div
+                        <motion.div
                           key={task.id}
+                          layout="position"
+                          initial={shouldReduceMotion ? false : { opacity: 0, y: 8 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
+                          transition={shouldReduceMotion ? { duration: 0 } : { duration: 0.22, ease: quietEase }}
                           className="p-4 rounded-xl bg-white/5 border border-white/10 flex items-start gap-3 justify-between hover:border-purple-500/30 transition group"
                         >
                           <div className="flex items-start gap-3">
@@ -334,9 +345,10 @@ export function AcademicPage() {
                               <Trash2 size={14} />
                             </button>
                           </div>
-                        </div>
+                        </motion.div>
                       );
                     })}
+                    </AnimatePresence>
                   </div>
                 </div>
               )}
@@ -349,9 +361,15 @@ export function AcademicPage() {
                     Completed ({completedTasks.length})
                   </h3>
                   <div className="grid gap-3">
+                    <AnimatePresence initial={false} mode="popLayout">
                     {completedTasks.map((task) => (
-                      <div
+                      <motion.div
                         key={task.id}
+                        layout="position"
+                        initial={shouldReduceMotion ? false : { opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
+                        transition={shouldReduceMotion ? { duration: 0 } : { duration: 0.22, ease: quietEase }}
                         className="p-4 rounded-xl bg-slate-900/30 border border-white/5 flex items-start gap-3 justify-between hover:border-emerald-500/20 transition group"
                       >
                         <div className="flex items-start gap-3 opacity-60">
@@ -390,13 +408,15 @@ export function AcademicPage() {
                             <Trash2 size={14} />
                           </button>
                         </div>
-                      </div>
+                      </motion.div>
                     ))}
+                    </AnimatePresence>
                   </div>
                 </div>
               )}
-            </div>
-          )}
+              </div>
+            )}
+          </MotionCrossfade>
         </div>
 
         {/* Right Column: Lab Track Visual (Roadmap info helper) */}
@@ -438,9 +458,13 @@ export function AcademicPage() {
             </div>
           </div>
         </div>
-      </div>
-      {deleteCandidate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-md">
+      </ScrollReveal>
+      <MotionModal
+        open={deleteCandidate !== null}
+        onBackdropClick={() => setDeleteCandidate(null)}
+        label="Konfirmasi hapus tugas kuliah"
+      >
+        {deleteCandidate && (
           <div className="w-full max-w-sm rounded-2xl border border-white/15 bg-slate-900 p-6 shadow-2xl">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-lg font-semibold text-white">Hapus tugas kuliah?</h3>
@@ -476,8 +500,8 @@ export function AcademicPage() {
               </button>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </MotionModal>
     </div>
   );
 }

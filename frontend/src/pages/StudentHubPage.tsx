@@ -36,6 +36,8 @@ import { useTasks } from '@/hooks/useTasks';
 import type { AcademicTask, AcademicTaskStatus, AcademicTaskType } from '@/types/telu';
 import type { CampusClassType, CampusSchedule, CreateCampusScheduleData } from '@/types/campus';
 import type { Task, TaskPriority, TaskStatus } from '@/types/task';
+import { MotionCrossfade } from '@/components/ui/UXSkeletons';
+import { MotionModal, ScrollReveal, StaggerGroup, StaggerItem } from '@/components/ui/motion';
 
 type CaptureMode = 'task' | 'academic' | 'habit' | 'expense';
 type ExpenseCategory = 'rent' | 'food' | 'laundry' | 'coffee' | 'developer_sub' | 'other';
@@ -214,29 +216,29 @@ export function StudentHubPage() {
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:min-w-[640px]">
-            <HubStat icon={AlertTriangle} label="Deadline 7 hari" value={String(urgentDeadlines.length)} tone="text-rose-300" />
-            <HubStat icon={GraduationCap} label="Matkul aktif" value={String(courseSummaries.length)} tone="text-cyan-300" />
-            <HubStat icon={Code2} label="Tubes/proyek" value={String(projectTasks.length)} tone="text-amber-300" />
-            <HubStat icon={Flame} label="Habit belum" value={String(unCheckedHabits.length)} tone="text-pink-300" />
-          </div>
+          <StaggerGroup className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:min-w-[640px]">
+            <StaggerItem><HubStat icon={AlertTriangle} label="Deadline 7 hari" value={String(urgentDeadlines.length)} tone="text-rose-300" /></StaggerItem>
+            <StaggerItem><HubStat icon={GraduationCap} label="Matkul aktif" value={String(courseSummaries.length)} tone="text-cyan-300" /></StaggerItem>
+            <StaggerItem><HubStat icon={Code2} label="Tubes/proyek" value={String(projectTasks.length)} tone="text-amber-300" /></StaggerItem>
+            <StaggerItem><HubStat icon={Flame} label="Habit belum" value={String(unCheckedHabits.length)} tone="text-pink-300" /></StaggerItem>
+          </StaggerGroup>
         </div>
       </section>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         <div className="space-y-6 xl:col-span-2">
-          <DailyStudentBrief
+          <ScrollReveal amount={0.1}><DailyStudentBrief
             nextClass={nextClass}
             urgentDeadlines={urgentDeadlines}
             unCheckedHabits={unCheckedHabits}
             budgetPercent={budgetPercent}
             healthAlerts={healthSnapshot?.alerts ?? []}
             burnoutLevel={analyticsSnapshot?.burnout_level}
-          />
+          /></ScrollReveal>
 
-          <DeadlineRadar items={deadlineRadar} />
+          <ScrollReveal amount={0.1}><DeadlineRadar items={deadlineRadar} /></ScrollReveal>
 
-          <SemesterPlanner
+          <ScrollReveal amount={0.1}><SemesterPlanner
             courses={courseSummaries}
             schedules={schedules}
             academicTasks={academicTasks}
@@ -246,9 +248,9 @@ export function StudentHubPage() {
             onDeleteSchedule={(id) => void deleteSchedule(id)}
             onEditAcademicTask={(task) => setAcademicEditor({ task })}
             onDeleteAcademicTask={(id) => void deleteAcademicTask(id)}
-          />
+          /></ScrollReveal>
 
-          <ProjectTracker
+          <ScrollReveal amount={0.1}><ProjectTracker
             items={projectTasks}
             onComplete={(item) => {
               if (item.source === 'academic') void updateAcademicTask(item.id, { status: 'completed' });
@@ -268,11 +270,11 @@ export function StudentHubPage() {
               if (item.source === 'academic') void deleteAcademicTask(item.id);
               if (item.source === 'task') void deleteGeneralTask(item.id);
             }}
-          />
+          /></ScrollReveal>
         </div>
 
         <div className="space-y-6">
-          <QuickCapture
+          <ScrollReveal amount={0.1}><QuickCapture
             mode={captureMode}
             setMode={setCaptureMode}
             quickText={quickText}
@@ -297,22 +299,27 @@ export function StudentHubPage() {
             setExpenseDescription={setExpenseDescription}
             saving={saving}
             onSubmit={submitQuickCapture}
-          />
+          /></ScrollReveal>
 
-          <LmsLinkHub links={lmsLinks} />
+          <ScrollReveal amount={0.1}><LmsLinkHub links={lmsLinks} /></ScrollReveal>
 
-          <ExamPreparation exams={examTasks} />
+          <ScrollReveal amount={0.1}><ExamPreparation exams={examTasks} /></ScrollReveal>
 
-          <BudgetGuard summary={summary} budgetPercent={budgetPercent} />
+          <ScrollReveal amount={0.1}><BudgetGuard summary={summary} budgetPercent={budgetPercent} /></ScrollReveal>
 
-          <LifeGuard
+          <ScrollReveal amount={0.1}><LifeGuard
             habits={unCheckedHabits}
             healthAlerts={healthSnapshot?.alerts ?? []}
             onCheckInHabit={checkInHabit}
-          />
+          /></ScrollReveal>
         </div>
       </div>
 
+      <MotionModal
+        open={academicEditor !== null}
+        onBackdropClick={() => setAcademicEditor(null)}
+        label="Editor tugas kuliah"
+      >
       {academicEditor && (
         <AcademicTaskEditor
           task={academicEditor.task}
@@ -328,7 +335,13 @@ export function StudentHubPage() {
           }}
         />
       )}
+      </MotionModal>
 
+      <MotionModal
+        open={scheduleEditor !== null}
+        onBackdropClick={() => setScheduleEditor(null)}
+        label="Editor jadwal kuliah"
+      >
       {scheduleEditor && (
         <ScheduleEditor
           schedule={scheduleEditor.schedule}
@@ -344,7 +357,13 @@ export function StudentHubPage() {
           }}
         />
       )}
+      </MotionModal>
 
+      <MotionModal
+        open={taskEditor !== null}
+        onBackdropClick={() => setTaskEditor(null)}
+        label="Editor project"
+      >
       {taskEditor && (
         <GeneralTaskEditor
           task={taskEditor}
@@ -355,6 +374,7 @@ export function StudentHubPage() {
           }}
         />
       )}
+      </MotionModal>
     </div>
   );
 }
@@ -962,7 +982,6 @@ function GeneralTaskEditor({
 
 function CrudModal({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-md">
       <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-slate-950/95 p-5 shadow-2xl">
         <div className="mb-4 flex items-center justify-between gap-4">
           <p className="text-sm font-bold text-white">{title}</p>
@@ -977,7 +996,6 @@ function CrudModal({ title, children, onClose }: { title: string; children: Reac
         </div>
         {children}
       </div>
-    </div>
   );
 }
 
@@ -1080,6 +1098,8 @@ function QuickCapture(props: {
       </div>
 
       <form onSubmit={props.onSubmit} className="space-y-3">
+        <MotionCrossfade stateKey={props.mode}>
+        <div className="space-y-3">
         {props.mode === 'task' && (
           <input
             value={props.quickText}
@@ -1170,6 +1190,8 @@ function QuickCapture(props: {
             />
           </>
         )}
+        </div>
+        </MotionCrossfade>
 
         <button
           type="submit"

@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
 import { ChevronDown, GraduationCap, KeyRound, Loader2, LogIn, ShieldCheck, UserRound } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/auth';
+import { MotionCollapse, StaggerGroup, StaggerItem } from '@/components/ui/motion';
 
 export function LoginPage() {
   const [token, setToken] = useState('');
@@ -55,13 +55,9 @@ export function LoginPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-transparent p-6">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="w-full max-w-md space-y-8"
-      >
+      <StaggerGroup className="w-full max-w-md space-y-8" stagger={0.06}>
         {/* Logo */}
-        <div className="text-center space-y-2">
+        <StaggerItem><div className="space-y-2 text-center">
           <div className="flex items-center justify-center gap-2">
             <GraduationCap className="w-12 h-12 text-blue-300" />
             <h1 className="text-5xl font-bold text-white">
@@ -71,15 +67,10 @@ export function LoginPage() {
           <p className="text-white/60">
             Student Operating System untuk mahasiswa
           </p>
-        </div>
+        </div></StaggerItem>
 
         {/* Login Panel */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="p-8 rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 shadow-2xl space-y-6"
-        >
+        <StaggerItem><div className="space-y-6 rounded-2xl border border-white/10 bg-white/5 p-8 shadow-2xl backdrop-blur-xl">
           <div>
             <h2 className="text-2xl font-bold text-white mb-2">Masuk ke ORVYN</h2>
             <p className="text-sm text-white/60">
@@ -134,11 +125,9 @@ export function LoginPage() {
             <ChevronDown className={`h-4 w-4 text-slate-500 transition ${showAdvanced ? 'rotate-180' : ''}`} />
           </button>
 
-          {showAdvanced && (
-            <motion.form
+          <MotionCollapse open={showAdvanced} motionKey="advanced-login">
+            <form
               onSubmit={handleSubmit}
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
               className="space-y-3 overflow-hidden"
             >
               <div className="space-y-2">
@@ -170,15 +159,15 @@ export function LoginPage() {
                 )}
                 {mode === 'token' && loading ? 'Memeriksa...' : 'Masuk dengan Token'}
               </button>
-            </motion.form>
-          )}
-        </motion.div>
+            </form>
+          </MotionCollapse>
+        </div></StaggerItem>
 
         {/* Footer */}
-        <p className="text-center text-xs text-white/40">
+        <StaggerItem><p className="text-center text-xs text-white/40">
           ORVYN untuk kuliah, fokus, kampus, uang bulanan, dan kesehatan.
-        </p>
-      </motion.div>
+        </p></StaggerItem>
+      </StaggerGroup>
     </div>
   );
 }

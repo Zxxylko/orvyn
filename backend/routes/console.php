@@ -3,6 +3,11 @@
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schedule;
+
+Schedule::command('notifications:dispatch-whatsapp')
+    ->everyMinute()
+    ->withoutOverlapping();
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
@@ -44,6 +49,7 @@ Artisan::command('tasks:repair-statuses {--dry-run : Show what would change with
 
     if ($this->option('dry-run')) {
         $this->info("Dry run complete. {$totalChanged} task(s) would be updated.");
+
         return self::SUCCESS;
     }
 

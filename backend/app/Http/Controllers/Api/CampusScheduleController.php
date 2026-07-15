@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\SendWhatsAppMessageJob;
 use App\Models\CampusSchedule;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -40,6 +41,7 @@ class CampusScheduleController extends Controller
             'prep_minutes' => $validated['prep_minutes'] ?? 20,
             'is_active' => $validated['is_active'] ?? true,
         ]);
+        $this->notifyChange($schedule, 'ditambahkan');
 
         return response()->json([
             'data' => $this->serializeSchedule($schedule),
@@ -53,6 +55,7 @@ class CampusScheduleController extends Controller
 
         $validated = $this->validateSchedule($request, true);
         $campusSchedule->update($validated);
+        $this->notifyChange($campusSchedule->fresh(), 'diperbarui');
 
         return response()->json([
             'data' => $this->serializeSchedule($campusSchedule->fresh()),
@@ -63,6 +66,7 @@ class CampusScheduleController extends Controller
     public function destroy(CampusSchedule $campusSchedule)
     {
         $this->authorizeSchedule($campusSchedule);
+        $this->notifyChange($campusSchedule, 'dihapus');
         $campusSchedule->delete();
 
         return response()->json([
@@ -117,5 +121,24 @@ class CampusScheduleController extends Controller
     private function authorizeSchedule(CampusSchedule $schedule): void
     {
         abort_unless($schedule->user_id === Auth::id(), 403);
+    }
+
+    private function notifyChange(CampusSchedule $schedule, string $action): void
+    {
+        $user = Auth::user();
+        if (! $user->whatsappConnection?->enabled || ! $user->whatsappConnection->featureEnabled('campus_updates')) {
+            return;
+        }
+
+        $message = "🎓 Jadwal kampus {$action}\n\n*{$schedule->course_name}*\n".
+            substr((string) $schedule->start_time, 0, 5).'-'.substr((string) $schedule->end_time, 0, 5).
+            ($schedule->room ? " · {$schedule->room}" : '');
+
+        SendWhatsAppMessageJob::dispatch(
+            $user->id,
+            'campus_update',
+            $message,
+            'wa:campus:'.$user->id.':'.$schedule->id.':'.$action.':'.now()->timestamp,
+        );
     }
 }

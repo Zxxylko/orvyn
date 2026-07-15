@@ -21,9 +21,10 @@ import {
   X,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { SkeletonPulse } from '@/components/ui/UXSkeletons';
+import { MotionCrossfade, SkeletonPulse } from '@/components/ui/UXSkeletons';
 import { useFinance } from '@/hooks/useFinance';
 import type { ExpenseCategory, LivingExpense } from '@/types/telu';
+import { MotionCollapse, MotionModal, ScrollReveal, StaggerGroup, StaggerItem } from '@/components/ui/motion';
 
 type CategoryFilter = ExpenseCategory | 'all';
 
@@ -221,14 +222,16 @@ export function FinancePage() {
         </div>
       </section>
 
-      {loading && !summary ? (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          <SkeletonPulse className="h-36 rounded-2xl" />
-          <SkeletonPulse className="h-36 rounded-2xl" />
-          <SkeletonPulse className="h-36 rounded-2xl" />
-        </div>
-      ) : summary ? (
-        <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
+      <MotionCrossfade stateKey={loading && !summary ? 'loading' : summary ? 'content' : 'empty'}>
+        {loading && !summary ? (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <SkeletonPulse className="h-36 rounded-2xl" />
+            <SkeletonPulse className="h-36 rounded-2xl" />
+            <SkeletonPulse className="h-36 rounded-2xl" />
+          </div>
+        ) : summary ? (
+          <StaggerGroup className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <StaggerItem>
           <SummaryCard
             label="Pengeluaran bulan ini"
             value={formatIDR(summary.total_spend)}
@@ -244,7 +247,9 @@ export function FinancePage() {
               />
             </div>
           </SummaryCard>
+          </StaggerItem>
 
+          <StaggerItem>
           <SummaryCard
             label="Sisa budget"
             value={formatIDR(summary.remaining_budget)}
@@ -261,7 +266,7 @@ export function FinancePage() {
             >
               {editingBudget ? 'Tutup' : 'Ubah budget'}
             </button>
-            {editingBudget && (
+            <MotionCollapse open={editingBudget} motionKey="finance-budget-editor">
               <form onSubmit={handleBudgetSubmit} className="mt-3 rounded-xl border border-white/10 bg-slate-950/45 p-3">
                 <label className="mb-1.5 block text-[9px] font-bold uppercase tracking-widest text-slate-500">
                   Budget bulanan baru
@@ -284,20 +289,24 @@ export function FinancePage() {
                   </button>
                 </div>
               </form>
-            )}
+            </MotionCollapse>
           </SummaryCard>
+          </StaggerItem>
 
+          <StaggerItem>
           <SummaryCard
             label="Tools coding / SaaS"
             value={formatIDR(summary.categories.developer_sub)}
             helper="Copilot, VPS, domain, hosting, dan tools dev."
             accent="text-blue-300"
           />
-        </section>
-      ) : null}
+          </StaggerItem>
+          </StaggerGroup>
+        ) : null}
+      </MotionCrossfade>
 
       {summary && (
-        <section className="reactive-card rounded-2xl border border-white/10 bg-white/[0.035] p-5 shadow-xl">
+        <ScrollReveal amount={0.12}><section className="reactive-card rounded-2xl border border-white/10 bg-white/[0.035] p-5 shadow-xl">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Kategori bulan ini</p>
@@ -324,10 +333,10 @@ export function FinancePage() {
               );
             })}
           </div>
-        </section>
+        </section></ScrollReveal>
       )}
 
-      {showForm && (
+      <MotionCollapse open={showForm} motionKey="finance-expense-form">
         <ExpenseForm
           editing={editingExpense}
           amount={amount}
@@ -342,9 +351,9 @@ export function FinancePage() {
           onCancel={closeForm}
           onSubmit={handleExpenseSubmit}
         />
-      )}
+      </MotionCollapse>
 
-      <section className="grid grid-cols-1 gap-6 lg:grid-cols-[1.45fr_0.85fr]">
+      <ScrollReveal className="grid grid-cols-1 gap-6 lg:grid-cols-[1.45fr_0.85fr]" amount={0.08}>
         <div className="reactive-card rounded-2xl border border-white/10 bg-white/[0.035] p-5 shadow-xl">
           <div className="mb-5 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
             <div>
@@ -380,41 +389,45 @@ export function FinancePage() {
             </div>
           </div>
 
-          {loading ? (
-            <div className="space-y-3">
-              <SkeletonPulse className="h-20 rounded-xl" />
-              <SkeletonPulse className="h-20 rounded-xl" />
-              <SkeletonPulse className="h-20 rounded-xl" />
-            </div>
-          ) : expenses.length === 0 ? (
-            <EmptyTransactions onCreate={openCreateForm} />
-          ) : filteredExpenses.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-white/10 bg-slate-950/30 px-4 py-10 text-center">
-              <p className="text-sm font-semibold text-slate-300">Tidak ada transaksi yang cocok.</p>
-              <button
-                type="button"
-                onClick={() => {
-                  setSearchQuery('');
-                  setCategoryFilter('all');
-                }}
-                className="focus-ring interactive-surface mt-4 rounded-xl border border-white/10 bg-white/[0.055] px-4 py-2 text-xs font-semibold text-slate-300 hover:bg-white/[0.09]"
-              >
-                Reset filter
-              </button>
-            </div>
-          ) : (
-            <div className="overflow-hidden rounded-xl border border-white/10">
-              {filteredExpenses.map((expense) => (
-                <ExpenseRow
-                  key={expense.id}
-                  expense={expense}
-                  onView={() => setViewingExpense(expense)}
-                  onEdit={() => openEditForm(expense)}
-                  onDelete={() => setDeleteCandidate(expense)}
-                />
-              ))}
-            </div>
-          )}
+          <MotionCrossfade
+            stateKey={loading ? 'loading' : expenses.length === 0 ? 'empty' : 'content'}
+          >
+            {loading ? (
+              <div className="space-y-3">
+                <SkeletonPulse className="h-20 rounded-xl" />
+                <SkeletonPulse className="h-20 rounded-xl" />
+                <SkeletonPulse className="h-20 rounded-xl" />
+              </div>
+            ) : expenses.length === 0 ? (
+              <EmptyTransactions onCreate={openCreateForm} />
+            ) : filteredExpenses.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-white/10 bg-slate-950/30 px-4 py-10 text-center">
+                <p className="text-sm font-semibold text-slate-300">Tidak ada transaksi yang cocok.</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchQuery('');
+                    setCategoryFilter('all');
+                  }}
+                  className="focus-ring interactive-surface mt-4 rounded-xl border border-white/10 bg-white/[0.055] px-4 py-2 text-xs font-semibold text-slate-300 hover:bg-white/[0.09]"
+                >
+                  Reset filter
+                </button>
+              </div>
+            ) : (
+              <div className="overflow-hidden rounded-xl border border-white/10">
+                {filteredExpenses.map((expense) => (
+                  <ExpenseRow
+                    key={expense.id}
+                    expense={expense}
+                    onView={() => setViewingExpense(expense)}
+                    onEdit={() => openEditForm(expense)}
+                    onDelete={() => setDeleteCandidate(expense)}
+                  />
+                ))}
+              </div>
+            )}
+          </MotionCrossfade>
         </div>
 
         <aside className="space-y-6">
@@ -447,17 +460,31 @@ export function FinancePage() {
             </div>
           </div>
         </aside>
-      </section>
+      </ScrollReveal>
 
+      <MotionModal
+        open={viewingExpense !== null}
+        onBackdropClick={() => setViewingExpense(null)}
+        label="Detail transaksi"
+      >
       {viewingExpense && (
         <ExpenseDetailModal
           expense={viewingExpense}
           onClose={() => setViewingExpense(null)}
           onEdit={() => openEditForm(viewingExpense)}
-          onDelete={() => setDeleteCandidate(viewingExpense)}
+          onDelete={() => {
+            setDeleteCandidate(viewingExpense);
+            setViewingExpense(null);
+          }}
         />
       )}
+      </MotionModal>
 
+      <MotionModal
+        open={deleteCandidate !== null}
+        onBackdropClick={() => setDeleteCandidate(null)}
+        label="Konfirmasi hapus transaksi"
+      >
       {deleteCandidate && (
         <DeleteExpenseDialog
           expense={deleteCandidate}
@@ -466,6 +493,7 @@ export function FinancePage() {
           onConfirm={confirmDelete}
         />
       )}
+      </MotionModal>
     </div>
   );
 }
@@ -721,7 +749,6 @@ function ExpenseDetailModal({
   const Icon = meta.icon;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-md">
       <div className="w-full max-w-md rounded-2xl border border-white/15 bg-slate-900 p-6 shadow-2xl">
         <div className="mb-5 flex items-start justify-between gap-4 border-b border-white/10 pb-4">
           <div className="flex items-center gap-3">
@@ -769,7 +796,6 @@ function ExpenseDetailModal({
           </button>
         </div>
       </div>
-    </div>
   );
 }
 
@@ -794,7 +820,6 @@ function DeleteExpenseDialog({
   onConfirm: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-md">
       <div className="w-full max-w-sm rounded-2xl border border-white/15 bg-slate-900 p-6 shadow-2xl">
         <div className="mb-5 flex items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-rose-300/20 bg-rose-300/10 text-rose-200">
@@ -827,7 +852,6 @@ function DeleteExpenseDialog({
           </button>
         </div>
       </div>
-    </div>
   );
 }
 

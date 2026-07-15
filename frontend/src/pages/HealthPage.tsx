@@ -24,9 +24,10 @@ import {
   Timer,
   Trash2,
 } from 'lucide-react';
-import { SkeletonPulse } from '@/components/ui/UXSkeletons';
+import { MotionCrossfade, SkeletonPulse } from '@/components/ui/UXSkeletons';
 import { useHealth } from '@/hooks/useHealth';
 import type { HealthLog, HealthSnapshot } from '@/types/telu';
+import { MotionModal, ScrollReveal, StaggerGroup, StaggerItem } from '@/components/ui/motion';
 
 type WindowWithWebkitAudio = Window & typeof globalThis & {
   webkitAudioContext?: typeof AudioContext;
@@ -241,14 +242,22 @@ export function HealthPage() {
               dan jeda mata dipantau dalam satu alur yang cepat dipakai.
             </p>
 
-            <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <HealthSummaryPill label="Status" value={readiness.label} tone={readiness.tone} />
-              <HealthSummaryPill label="Alert aktif" value={`${snapshot?.alerts.length ?? 0}`} tone="text-cyan-200" />
-              <HealthSummaryPill label="Log tersimpan" value={`${logs.length} hari`} tone="text-slate-200" />
-            </div>
+            <StaggerGroup className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <StaggerItem><HealthSummaryPill label="Status" value={readiness.label} tone={readiness.tone} /></StaggerItem>
+              <StaggerItem><HealthSummaryPill label="Alert aktif" value={`${snapshot?.alerts.length ?? 0}`} tone="text-cyan-200" /></StaggerItem>
+              <StaggerItem><HealthSummaryPill label="Log tersimpan" value={`${logs.length} hari`} tone="text-slate-200" /></StaggerItem>
+            </StaggerGroup>
           </div>
 
           <div className="border-t border-white/10 bg-slate-950/35 p-6 sm:p-7 lg:border-l lg:border-t-0">
+            <MotionCrossfade stateKey={loading ? 'readiness-loading' : 'readiness-content'}>
+            {loading ? (
+              <div className="space-y-5">
+                <SkeletonPulse className="h-24 rounded-2xl" />
+                <SkeletonPulse className="h-12 rounded-xl" />
+              </div>
+            ) : (
+            <>
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Readiness score</p>
@@ -267,28 +276,32 @@ export function HealthPage() {
               </div>
             </div>
             <p className="mt-5 text-sm font-medium leading-relaxed text-slate-400">{readiness.message}</p>
+            </>
+            )}
+            </MotionCrossfade>
           </div>
         </div>
       </section>
 
-      {loading ? (
-        <HealthLoadingState />
-      ) : (
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.45fr_0.85fr]">
+      <MotionCrossfade stateKey={loading ? 'loading' : 'content'}>
+        {loading ? (
+          <HealthLoadingState />
+        ) : (
+          <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.45fr_0.85fr]">
           <div className="space-y-6">
-            <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <StaggerGroup className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
               {metrics.map((metric) => (
-                <MetricCard key={metric.label} metric={metric} />
+                <StaggerItem key={metric.label}><MetricCard metric={metric} /></StaggerItem>
               ))}
-            </section>
+            </StaggerGroup>
 
-            <HealthAlertsPanel
+            <ScrollReveal amount={0.1}><HealthAlertsPanel
               snapshot={snapshot}
               onWater={quickAddWater}
               onEyeBreak={startQuickEyeBreak}
-            />
+            /></ScrollReveal>
 
-            <QuickLogPanel
+            <ScrollReveal amount={0.1}><QuickLogPanel
               sleepInput={sleepInput}
               screenTimeInput={screenTimeInput}
               loggingHydration={loggingHydration}
@@ -301,9 +314,9 @@ export function HealthPage() {
               onCoffee={quickAddCoffee}
               onSleepSubmit={handleSleepSubmit}
               onScreenSubmit={handleScreenSubmit}
-            />
+            /></ScrollReveal>
 
-            <WellnessLedger
+            <ScrollReveal amount={0.1}><WellnessLedger
               logs={logs}
               onEdit={(log) => {
                 setEditingLog(log);
@@ -313,11 +326,11 @@ export function HealthPage() {
                 setEditSleep(log.sleep_hours.toString());
               }}
               onDelete={deleteLog}
-            />
+            /></ScrollReveal>
           </div>
 
           <aside className="space-y-6">
-            <EyeBreakTimer
+            <ScrollReveal amount={0.1}><EyeBreakTimer
               breakTimer={breakTimer}
               timerRunning={timerRunning}
               onToggle={() => setTimerRunning((running) => !running)}
@@ -325,9 +338,9 @@ export function HealthPage() {
                 setTimerRunning(false);
                 setBreakTimer(20 * 60);
               }}
-            />
+            /></ScrollReveal>
 
-            <EyeResetGame
+            <ScrollReveal amount={0.1}><EyeResetGame
               running={gameRunning}
               timeLeft={gameTimeLeft}
               score={gameScore}
@@ -335,13 +348,19 @@ export function HealthPage() {
               targetIndex={targetIndex}
               onStart={startEyeGame}
               onHit={hitTarget}
-            />
+            /></ScrollReveal>
 
-            <ErgonomicTips />
+            <ScrollReveal amount={0.1}><ErgonomicTips /></ScrollReveal>
           </aside>
-        </div>
-      )}
+          </div>
+        )}
+      </MotionCrossfade>
 
+      <MotionModal
+        open={editingLog !== null}
+        onBackdropClick={() => setEditingLog(null)}
+        label="Edit log kesehatan"
+      >
       {editingLog && (
         <EditHealthLogModal
           log={editingLog}
@@ -358,6 +377,7 @@ export function HealthPage() {
           onSubmit={handleEditSubmit}
         />
       )}
+      </MotionModal>
     </div>
   );
 }
@@ -915,7 +935,6 @@ function EditHealthLogModal({
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-md">
       <div className="w-full max-w-md rounded-2xl border border-white/15 bg-slate-900 p-6 shadow-2xl">
         <div className="mb-5 flex items-center justify-between gap-4 border-b border-white/10 pb-4">
           <div>
@@ -954,7 +973,6 @@ function EditHealthLogModal({
           </div>
         </form>
       </div>
-    </div>
   );
 }
 

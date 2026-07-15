@@ -5,7 +5,7 @@ import { TimeBlockGrid } from '@/components/calendar/TimeBlockGrid';
 import { TimeBlockForm } from '@/components/calendar/TimeBlockForm';
 import { Dialog } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { CalendarSkeleton } from '@/components/ui/UXSkeletons';
+import { CalendarSkeleton, MotionCrossfade } from '@/components/ui/UXSkeletons';
 import { ChevronLeft, ChevronRight, Sparkles, Loader2, Plus, Calendar } from 'lucide-react';
 import { format, addDays, subDays, startOfWeek, endOfWeek } from 'date-fns';
 import type { CreateTimeBlockData, TimeBlock } from '@/types/timeblock';
@@ -156,19 +156,19 @@ export function CalendarPage() {
 
       {/* Grid view canvas */}
       <div className="relative">
-        {calendarLoading && timeBlocks.length === 0 && (
-          <CalendarSkeleton />
-        )}
-
-        {(!calendarLoading || timeBlocks.length > 0) && (
-          <TimeBlockGrid
-            timeBlocks={timeBlocks}
-            onBlockClick={handleBlockClick}
-            onCellClick={handleCellClick}
-            currentDate={currentDate}
-            density={density}
-          />
-        )}
+        <MotionCrossfade stateKey={calendarLoading && timeBlocks.length === 0 ? 'loading' : 'content'}>
+          {calendarLoading && timeBlocks.length === 0 ? (
+            <CalendarSkeleton />
+          ) : (
+            <TimeBlockGrid
+              timeBlocks={timeBlocks}
+              onBlockClick={handleBlockClick}
+              onCellClick={handleCellClick}
+              currentDate={currentDate}
+              density={density}
+            />
+          )}
+        </MotionCrossfade>
       </div>
 
       {/* Scheduler Modal */}

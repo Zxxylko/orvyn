@@ -2,23 +2,28 @@ import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { CommandPalette } from './CommandPalette';
 import { useAuth } from '@/contexts/auth';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { ArrowUp, CalendarDays, Command, Plus } from 'lucide-react';
-import { Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { useEffect, useRef, useState } from 'react';
+import { Navigate, useLocation, useNavigate, useOutlet } from 'react-router-dom';
+import { Suspense, useEffect, useRef, useState } from 'react';
+import { MobileNavigation } from './MobileNavigation';
+import { OnboardingTour } from './OnboardingTour';
 
 interface AppShellProps {
-  children: React.ReactNode;
+  children?: React.ReactNode;
 }
 
 export function AppShell({ children }: AppShellProps) {
   const { token, loading } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const outlet = useOutlet();
+  const shouldReduceMotion = useReducedMotion();
   const scrollViewportRef = useRef<HTMLElement | null>(null);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [scrollProgress, setScrollProgress] = useState(0);
   const [showBackToTop, setShowBackToTop] = useState(false);
+  const [onboardingOpen, setOnboardingOpen] = useState(() => localStorage.getItem('orvyn-onboarding-seen') !== 'true');
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -48,6 +53,14 @@ export function AppShell({ children }: AppShellProps) {
     return () => viewport.removeEventListener('scroll', updateScrollProgress);
   }, [location.pathname]);
 
+  const resetScrollPosition = () => {
+    const viewport = scrollViewportRef.current;
+    if (!viewport) return;
+    viewport.scrollTop = 0;
+    setScrollProgress(0);
+    setShowBackToTop(false);
+  };
+
   const focusSmartTaskInput = () => {
     navigate('/dashboard');
     window.setTimeout(() => {
@@ -56,7 +69,7 @@ export function AppShell({ children }: AppShellProps) {
   };
 
   const scrollToTop = () => {
-    scrollViewportRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+    scrollViewportRef.current?.scrollTo({ top: 0, behavior: shouldReduceMotion ? 'auto' : 'smooth' });
   };
 
   // If loading user data, show loading spinner
@@ -86,7 +99,7 @@ export function AppShell({ children }: AppShellProps) {
       {/* Main page content area */}
       <div className="flex flex-col flex-1 h-full min-w-0 overflow-hidden">
         {/* Header bar */}
-        <Header onOpenCommandPalette={() => setCommandPaletteOpen(true)} />
+        <Header onOpenCommandPalette={() => setCommandPaletteOpen(true)} onOpenOnboarding={() => setOnboardingOpen(true)} />
 
         {/* Scrollable page viewport */}
         <div className="h-px w-full bg-white/[0.035]">
@@ -98,24 +111,37 @@ export function AppShell({ children }: AppShellProps) {
 
         <main
           ref={scrollViewportRef}
-          className="flex-1 overflow-x-hidden overflow-y-auto bg-transparent px-4 py-5 sm:px-6 lg:px-8 lg:py-8"
+          className="flex-1 overflow-x-hidden overflow-y-auto bg-transparent px-4 pb-24 pt-5 sm:px-6 lg:px-8 lg:pb-24 lg:pt-8"
         >
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={location.pathname}
-              initial={{ opacity: 0, y: 14, scale: 0.995 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -8, scale: 0.998 }}
-              transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-              className="page-motion mx-auto h-full w-full max-w-7xl"
-            >
-              {children}
-            </motion.div>
+          <AnimatePresence mode="wait" onExitComplete={resetScrollPosition}>
+              <motion.div
+                key={location.pathname}
+                initial={shouldReduceMotion ? false : { opacity: 0, y: 12 }}
+                animate={{
+                  opacity: 1,
+                  y: 0,
+                  transition: shouldReduceMotion
+                    ? { duration: 0 }
+                    : { duration: 0.36, ease: [0.22, 1, 0.36, 1] },
+                }}
+                exit={{
+                  opacity: 0,
+                  y: shouldReduceMotion ? 0 : -6,
+                  transition: shouldReduceMotion ? { duration: 0 } : { duration: 0.16, ease: 'easeOut' },
+                }}
+                className="page-motion mx-auto h-full w-full max-w-7xl"
+              >
+                <Suspense fallback={<RouteContentLoader />}>
+                  {children ?? outlet}
+                </Suspense>
+              </motion.div>
           </AnimatePresence>
         </main>
       </div>
 
       <CommandPalette open={commandPaletteOpen} onOpenChange={setCommandPaletteOpen} />
+      <MobileNavigation onOpenCommandPalette={() => setCommandPaletteOpen(true)} onOpenOnboarding={() => setOnboardingOpen(true)} />
+      <OnboardingTour open={onboardingOpen} onOpenChange={setOnboardingOpen} />
       <QuickActionDock
         onOpenCommandPalette={() => setCommandPaletteOpen(true)}
         onAddTask={focusSmartTaskInput}
@@ -124,6 +150,27 @@ export function AppShell({ children }: AppShellProps) {
         showBackToTop={showBackToTop}
       />
     </div>
+  );
+}
+
+function RouteContentLoader() {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.18 }}
+      className="mx-auto w-full max-w-7xl space-y-5"
+      role="status"
+      aria-label="Memuat halaman"
+    >
+      <div className="h-24 animate-pulse rounded-2xl border border-white/10 bg-white/[0.035]" />
+      <div className="grid gap-5 md:grid-cols-3">
+        <div className="h-32 animate-pulse rounded-2xl border border-white/10 bg-white/[0.035]" />
+        <div className="h-32 animate-pulse rounded-2xl border border-white/10 bg-white/[0.035]" />
+        <div className="h-32 animate-pulse rounded-2xl border border-white/10 bg-white/[0.035]" />
+      </div>
+      <span className="sr-only">Menyiapkan ruang kerja...</span>
+    </motion.div>
   );
 }
 
@@ -166,7 +213,7 @@ function QuickActionDock({
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1], delay: 0.12 }}
       style={{ x: '-50%' }}
-      className="fixed bottom-4 left-1/2 z-40 flex items-center gap-1 rounded-2xl border border-white/10 bg-slate-950/90 p-1.5 shadow-2xl shadow-black/40 backdrop-blur-2xl sm:bottom-5"
+      className="fixed bottom-4 left-1/2 z-40 hidden items-center gap-1 rounded-2xl border border-white/10 bg-slate-950/90 p-1.5 shadow-2xl shadow-black/40 backdrop-blur-2xl md:flex md:bottom-5"
     >
       {actions.map((action) => {
         const Icon = action.icon;

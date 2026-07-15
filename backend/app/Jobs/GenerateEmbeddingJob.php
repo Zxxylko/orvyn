@@ -3,7 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\Task;
-use App\Services\AI\GeminiService;
+use App\Services\AI\AIManager;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -11,6 +11,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class GenerateEmbeddingJob implements ShouldQueue
 {
@@ -26,27 +27,32 @@ class GenerateEmbeddingJob implements ShouldQueue
     /**
      * Execute the job.
      */
-    public function handle(GeminiService $geminiService): void
+    public function handle(AIManager $ai): void
     {
-        $content = $this->task->title . "\n" . ($this->task->description ?? '');
-        
-        $embedding = $geminiService->generateEmbedding($content);
+        $content = $this->task->title."\n".($this->task->description ?? '');
+
+        $embedding = $ai->generateEmbedding($content);
 
         if ($embedding) {
+            $storedEmbedding = json_encode(array_map(
+                static fn ($value): float => (float) $value,
+                $embedding,
+            ));
+
             // Store embedding
             DB::table('task_embeddings')->updateOrInsert(
                 ['task_id' => $this->task->id],
                 [
-                    'id' => \Illuminate\Support\Str::uuid(),
+                    'id' => Str::uuid(),
                     'chunk_content' => $content,
-                    'embedding' => DB::raw("'" . json_encode($embedding) . "'::vector"),
+                    'embedding' => $storedEmbedding,
                     'created_at' => now(),
                 ]
             );
-            
+
             Log::info("Generated and stored embedding for task: {$this->task->id}");
         } else {
-            Log::warning("Could not generate embedding for task: {$this->task->id} (API key might be empty)");
+            Log::warning("Could not generate embedding for task: {$this->task->id} (AI embedding provider unavailable)");
         }
     }
 }

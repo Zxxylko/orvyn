@@ -12,7 +12,7 @@ class BriefingControllerTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_today_generates_safe_fallback_briefing_without_gemini_key(): void
+    public function test_today_returns_not_found_without_creating_a_briefing(): void
     {
         config(['ai.gemini.api_key' => null]);
 
@@ -31,6 +31,35 @@ class BriefingControllerTest extends TestCase
         ]);
 
         $response = $this->getJson('/api/v1/briefing/today');
+
+        $response->assertNotFound()
+            ->assertJsonPath('data', null);
+
+        $this->assertDatabaseMissing('ai_briefings', [
+            'user_id' => $user->id,
+            'briefing_date' => today()->toDateString(),
+        ]);
+    }
+
+    public function test_generate_creates_safe_fallback_briefing_without_gemini_key(): void
+    {
+        config(['ai.provider' => 'gemini', 'ai.gemini.api_key' => null]);
+
+        $user = User::factory()->create();
+        Sanctum::actingAs($user);
+
+        Task::create([
+            'user_id' => $user->id,
+            'title' => 'Finish AI briefing test',
+            'deadline' => now()->addDay(),
+            'status' => 'pending',
+            'priority' => 'high',
+            'duration_minutes' => 60,
+            'difficulty' => 3,
+            'category' => 'theory',
+        ]);
+
+        $response = $this->postJson('/api/v1/briefing/generate');
 
         $response->assertOk()
             ->assertJsonPath('data.health_metrics.burnout_risk', 'low')

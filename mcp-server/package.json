@@ -1,6 +1,6 @@
 {
   "name": "@orvyn/mcp-server",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "MCP server for the ORVYN student operating system.",
@@ -9,6 +9,9 @@
   },
   "scripts": {
     "start": "node src/server.mjs",
+    "check": "node --check src/server.mjs",
+    "test": "node --test test/server.test.mjs",
+    "smoke": "node test/live-smoke.mjs",
     "inspect": "npx @modelcontextprotocol/inspector node src/server.mjs"
   },
   "engines": {
@@ -16,6 +19,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.18.2",
+    "dotenv": "^17.2.0",
     "zod": "^3.25.76"
   }
 }

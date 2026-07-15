@@ -1,0 +1,13 @@
+{
+  "name": "ORVYN Student OS",
+  "transport": "stdio",
+  "command": "node",
+  "args": [
+    "/opt/orvyn-mcp/src/server.mjs"
+  ],
+  "env": {
+    "ORVYN_API_BASE_URL": "http://host.docker.internal:8000/api/v1",
+    "ORVYN_API_TOKEN": "your_sanctum_token_here",
+    "ORVYN_API_TIMEOUT_MS": "30000"
+  }
+}

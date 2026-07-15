@@ -2,20 +2,20 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Http\Controllers\Controller;
-use App\Models\Task;
-use App\Services\AI\GeminiService;
-use App\Jobs\GenerateEmbeddingJob;
 use App\Events\TaskCreated;
-use App\Events\TaskUpdated;
 use App\Events\TaskDeleted;
+use App\Events\TaskUpdated;
+use App\Http\Controllers\Controller;
+use App\Jobs\GenerateEmbeddingJob;
+use App\Models\Task;
+use App\Services\AI\AIManager;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
 class TaskController extends Controller
 {
     public function __construct(
-        private GeminiService $geminiService
+        private AIManager $ai
     ) {}
 
     /**
@@ -46,7 +46,7 @@ class TaskController extends Controller
 
         return response()->json([
             'data' => $tasks,
-            'message' => 'Tasks retrieved successfully'
+            'message' => 'Tasks retrieved successfully',
         ]);
     }
 
@@ -79,7 +79,7 @@ class TaskController extends Controller
 
         return response()->json([
             'data' => $task,
-            'message' => 'Task created successfully'
+            'message' => 'Task created successfully',
         ], 201);
     }
 
@@ -92,8 +92,8 @@ class TaskController extends Controller
             'input' => 'required|string|max:500',
         ]);
 
-        $parsed = $this->geminiService->parseTask($validated['input']);
-        
+        $parsed = $this->ai->parseTask($validated['input']);
+
         $parsed['status'] ??= 'pending';
         $task = Auth::user()->tasks()->create($parsed);
 
@@ -106,7 +106,7 @@ class TaskController extends Controller
         return response()->json([
             'data' => $task,
             'message' => 'Task parsed and created successfully',
-            'ai_processed' => $parsed['ai_processed']
+            'ai_processed' => $parsed['ai_processed'],
         ], 201);
     }
 
@@ -119,7 +119,7 @@ class TaskController extends Controller
 
         return response()->json([
             'data' => $task->load('embeddings', 'timeBlocks'),
-            'message' => 'Task retrieved successfully'
+            'message' => 'Task retrieved successfully',
         ]);
     }
 
@@ -155,7 +155,7 @@ class TaskController extends Controller
 
         return response()->json([
             'data' => $task,
-            'message' => 'Task updated successfully'
+            'message' => 'Task updated successfully',
         ]);
     }
 
@@ -175,7 +175,7 @@ class TaskController extends Controller
         broadcast(new TaskDeleted($taskId, $userId));
 
         return response()->json([
-            'message' => 'Task deleted successfully'
+            'message' => 'Task deleted successfully',
         ]);
     }
 }

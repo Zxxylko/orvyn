@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { briefingApi, getApiErrorMessage, timeBlockApi } from '@/lib/api';
@@ -29,6 +29,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const [query, setQuery] = useState('');
   const [runningAction, setRunningAction] = useState<string | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const paletteRef = useRef<HTMLDivElement>(null);
 
   const closePalette = useCallback(() => {
     setQuery('');
@@ -167,9 +168,39 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   useEffect(() => {
     if (!open) return;
 
+    const overlay = paletteRef.current?.parentElement;
+    const backgroundElements = overlay?.parentElement
+      ? Array.from(overlay.parentElement.children).filter((element) => element !== overlay) as HTMLElement[]
+      : [];
+    const previousAccessibility = backgroundElements.map((element) => ({
+      element,
+      ariaHidden: element.getAttribute('aria-hidden'),
+      inert: element.inert,
+    }));
+    backgroundElements.forEach((element) => {
+      element.setAttribute('aria-hidden', 'true');
+      element.inert = true;
+    });
+
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         closePalette();
+        return;
+      }
+
+      if (event.key === 'Tab' && paletteRef.current) {
+        const focusable = Array.from(paletteRef.current.querySelectorAll<HTMLElement>('input, button:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+        if (focusable.length > 0) {
+          const first = focusable[0];
+          const last = focusable[focusable.length - 1];
+          if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+          } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+          }
+        }
         return;
       }
 
@@ -192,7 +223,14 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     };
 
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      previousAccessibility.forEach(({ element, ariaHidden, inert }) => {
+        if (ariaHidden === null) element.removeAttribute('aria-hidden');
+        else element.setAttribute('aria-hidden', ariaHidden);
+        element.inert = inert;
+      });
+    };
   }, [closePalette, filteredCommands, open, runCommand, runningAction, selectedIndex]);
 
   return (
@@ -211,6 +249,10 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           }}
         >
           <motion.div
+            ref={paletteRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Pencarian halaman dan aksi"
             initial={{ opacity: 0, y: 18, scale: 0.97 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.98 }}

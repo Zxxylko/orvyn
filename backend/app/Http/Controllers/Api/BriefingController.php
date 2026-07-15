@@ -3,14 +3,14 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Services\AI\GeminiService;
 use App\Models\User;
+use App\Services\AI\AIManager;
 use Illuminate\Support\Facades\Auth;
 
 class BriefingController extends Controller
 {
     public function __construct(
-        private GeminiService $geminiService
+        private AIManager $ai
     ) {}
 
     /**
@@ -21,14 +21,16 @@ class BriefingController extends Controller
         $user = Auth::user();
         $briefing = $user->briefings()->today()->first();
 
-        if (!$briefing) {
-            // Auto-generate if none exists yet today
-            return $this->generate();
+        if (! $briefing) {
+            return response()->json([
+                'data' => null,
+                'message' => 'No briefing has been generated for today.',
+            ], 404);
         }
 
         return response()->json([
             'data' => $this->briefingPayload($briefing, $this->buildContext($user)),
-            'message' => 'Today\'s briefing retrieved successfully'
+            'message' => 'Today\'s briefing retrieved successfully',
         ]);
     }
 
@@ -45,8 +47,8 @@ class BriefingController extends Controller
         // 1. Gather context
         $context = $this->buildContext($user);
 
-        // 2. Call GeminiService to get briefing data
-        $briefingData = $this->geminiService->generateBriefing($user, $context);
+        // 2. Generate with the configured AI provider (Ollama by default)
+        $briefingData = $this->ai->generateBriefing($user, $context);
 
         // 3. Save or update briefing for today
         if ($briefing) {
@@ -66,7 +68,7 @@ class BriefingController extends Controller
 
         return response()->json([
             'data' => $this->briefingPayload($briefing->fresh(), $context),
-            'message' => 'Today\'s briefing generated successfully'
+            'message' => 'Today\'s briefing generated successfully',
         ]);
     }
 
@@ -74,20 +76,20 @@ class BriefingController extends Controller
     {
         $activeTasks = $user->tasks()->whereIn('status', ['pending', 'in_progress'])->get();
         $overdueTasks = $user->tasks()->overdue()->get();
-        
+
         // Tasks completed in the last 7 days
         $completedLast7Days = $user->tasks()
             ->where('status', 'completed')
             ->where('completed_at', '>=', now()->subDays(7))
             ->get();
-            
+
         $activeCount = $activeTasks->count();
         $overdueCount = $overdueTasks->count();
         $completedCount = $completedLast7Days->count();
-        
+
         $totalCreated7Days = $activeCount + $completedCount;
         $completionRate = $totalCreated7Days > 0 ? round(($completedCount / $totalCreated7Days) * 100) : 0;
-        
+
         $avgDifficulty = $activeTasks->avg('difficulty') ?? 3;
 
         // Map upcoming deadlines (due in the next 3 days)
@@ -97,9 +99,9 @@ class BriefingController extends Controller
             ->where('deadline', '<=', now()->addDays(3))
             ->orderBy('deadline', 'asc')
             ->get()
-            ->map(fn($task) => [
+            ->map(fn ($task) => [
                 'title' => $task->title,
-                'deadline' => $task->deadline ? $task->deadline->toDateTimeString() : null
+                'deadline' => $task->deadline ? $task->deadline->toDateTimeString() : null,
             ])
             ->toArray();
 
@@ -107,7 +109,7 @@ class BriefingController extends Controller
             ->whereBetween('start_time', [now()->startOfDay(), now()->endOfDay()])
             ->orderBy('start_time', 'asc')
             ->get()
-            ->map(fn($block) => [
+            ->map(fn ($block) => [
                 'label' => $block->label,
                 'type' => $block->block_type,
                 'start' => $block->start_time ? $block->start_time->format('H:i') : null,
@@ -130,7 +132,7 @@ class BriefingController extends Controller
             ->orderBy('deadline', 'asc')
             ->limit(6)
             ->get()
-            ->map(fn($task) => [
+            ->map(fn ($task) => [
                 'course' => $task->course_name,
                 'title' => $task->title,
                 'type' => $task->task_type,

@@ -1,0 +1,12 @@
+{
+  "name": "ORVYN Student OS",
+  "transport": "stdio",
+  "command": "node",
+  "args": [
+    "/Users/zaidan/Coding/orvyn/mcp-server/src/server.mjs"
+  ],
+  "env": {
+    "ORVYN_API_BASE_URL": "http://127.0.0.1:8000/api/v1",
+    "ORVYN_API_TIMEOUT_MS": "30000"
+  }
+}

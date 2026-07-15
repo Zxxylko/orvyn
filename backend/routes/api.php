@@ -1,15 +1,18 @@
 <?php
 
+use App\Http\Controllers\Api\AcademicTaskController;
 use App\Http\Controllers\Api\AnalyticsController;
 use App\Http\Controllers\Api\BriefingController;
-use App\Http\Controllers\Api\TaskController;
-use App\Http\Controllers\Api\TimeBlockController;
-use App\Http\Controllers\Api\AcademicTaskController;
-use App\Http\Controllers\Api\LivingExpenseController;
-use App\Http\Controllers\Api\HealthLogController;
-use App\Http\Controllers\Api\HabitController;
 use App\Http\Controllers\Api\CampusScheduleController;
 use App\Http\Controllers\Api\DemoAuthController;
+use App\Http\Controllers\Api\HabitController;
+use App\Http\Controllers\Api\HealthLogController;
+use App\Http\Controllers\Api\LivingExpenseController;
+use App\Http\Controllers\Api\TaskController;
+use App\Http\Controllers\Api\TimeBlockController;
+use App\Http\Controllers\Api\WhatsAppConnectionController;
+use App\Http\Controllers\Api\WhatsAppWebhookController;
+use App\Http\Middleware\RequireOrvynAbility;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -17,9 +20,11 @@ Route::prefix('v1')->group(function () {
     // Public routes
     // Route::post('/auth/firebase', [AuthController::class, 'syncFirebaseUser']);
     Route::post('/auth/demo-login', [DemoAuthController::class, 'login'])->middleware('throttle:10,1');
+    Route::post('/integrations/whatsapp/inbound', [WhatsAppWebhookController::class, 'inbound'])
+        ->middleware('throttle:120,1');
 
     // Protected routes (Sanctum auth for now, Firebase later)
-    Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function () {
+    Route::middleware(['auth:sanctum', RequireOrvynAbility::class, 'throttle:120,1'])->group(function () {
         // User
         Route::get('/user', function (Request $request) {
             return response()->json(['data' => $request->user()]);
@@ -65,5 +70,13 @@ Route::prefix('v1')->group(function () {
         Route::apiResource('finance/expenses', LivingExpenseController::class);
         Route::get('health/snapshot', [HealthLogController::class, 'snapshot']);
         Route::apiResource('health/logs', HealthLogController::class);
+
+        // WhatsApp assistant & notification preferences
+        Route::get('integrations/whatsapp', [WhatsAppConnectionController::class, 'show']);
+        Route::patch('integrations/whatsapp', [WhatsAppConnectionController::class, 'update']);
+        Route::post('integrations/whatsapp/connect', [WhatsAppConnectionController::class, 'connect'])
+            ->middleware('throttle:6,1,whatsapp-connect:');
+        Route::post('integrations/whatsapp/test', [WhatsAppConnectionController::class, 'test'])
+            ->middleware('throttle:6,1,whatsapp-test:');
     });
 });

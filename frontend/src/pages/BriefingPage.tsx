@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { useBriefing } from '@/hooks/useBriefing';
 import { BriefingPanel } from '@/components/briefing/BriefingPanel';
 import { Button } from '@/components/ui/button';
-import { BriefingSkeleton } from '@/components/ui/UXSkeletons';
+import { BriefingSkeleton, MotionCrossfade } from '@/components/ui/UXSkeletons';
 import { ClipboardList, Loader2, RefreshCw } from 'lucide-react';
 
 export function BriefingPage() {
@@ -21,12 +21,15 @@ export function BriefingPage() {
 
   if (loading) {
     return (
-      <BriefingSkeleton />
+      <MotionCrossfade stateKey="loading">
+        <BriefingSkeleton />
+      </MotionCrossfade>
     );
   }
 
   return (
-    <div className="space-y-5">
+    <MotionCrossfade stateKey="content">
+      <div className="space-y-5">
       {/* Page header controls */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 rounded-2xl border border-white/5 bg-white/[0.035] px-5 py-4 backdrop-blur-xl">
         <div className="flex items-center gap-3">
@@ -92,6 +95,7 @@ export function BriefingPage() {
           </div>
         )
       )}
-    </div>
+      </div>
+    </MotionCrossfade>
   );
 }

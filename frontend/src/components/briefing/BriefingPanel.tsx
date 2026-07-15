@@ -5,6 +5,7 @@ import { CalendarClock, CalendarRange, CheckSquare, ClipboardList, Clock3, Dropl
 import { format } from 'date-fns';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { MotionCollapse, ScrollReveal } from '@/components/ui/motion';
 
 interface BriefingPanelProps {
   briefing: AIBriefing;
@@ -64,7 +65,7 @@ export function BriefingPanel({ briefing }: BriefingPanelProps) {
       <div className="lg:col-span-2 space-y-6">
         
         {/* Main summary card */}
-        <div className="relative overflow-hidden rounded-2xl border border-white/5 bg-white/[0.035] p-6 shadow-xl backdrop-blur-xl">
+        <ScrollReveal amount={0.12}><div className="relative overflow-hidden rounded-2xl border border-white/5 bg-white/[0.035] p-6 shadow-xl backdrop-blur-xl">
           <div className="flex items-center gap-2.5 mb-4">
             <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-300 border border-blue-500/20">
               <ClipboardList size={18} />
@@ -95,10 +96,10 @@ export function BriefingPanel({ briefing }: BriefingPanelProps) {
               ))}
             </div>
           )}
-        </div>
+        </div></ScrollReveal>
 
         {/* Daily Timeline */}
-        <div className="rounded-2xl border border-white/5 bg-white/[0.035] p-6 shadow-xl backdrop-blur-xl">
+        <ScrollReveal amount={0.12}><div className="rounded-2xl border border-white/5 bg-white/[0.035] p-6 shadow-xl backdrop-blur-xl">
           <div className="mb-4 flex items-center gap-2">
             <CalendarClock className="h-5 w-5 text-cyan-300" />
             <h3 className="text-sm font-bold tracking-wider text-slate-300 uppercase">
@@ -126,10 +127,10 @@ export function BriefingPanel({ briefing }: BriefingPanelProps) {
               Belum ada jadwal atau deadline untuk hari ini.
             </div>
           )}
-        </div>
+        </div></ScrollReveal>
 
         {/* Recommended Adjustments Card */}
-        <div className="rounded-2xl border border-white/5 bg-white/[0.035] p-6 shadow-xl backdrop-blur-xl">
+        <ScrollReveal amount={0.12}><div className="rounded-2xl border border-white/5 bg-white/[0.035] p-6 shadow-xl backdrop-blur-xl">
           <div className="flex items-center gap-2 mb-4">
             <CheckSquare className="w-5 h-5 text-blue-300" />
             <h3 className="text-sm font-bold tracking-wider text-slate-300 uppercase">
@@ -158,18 +159,18 @@ export function BriefingPanel({ briefing }: BriefingPanelProps) {
               Belum ada rekomendasi khusus untuk hari ini.
             </div>
           )}
-        </div>
+        </div></ScrollReveal>
       </div>
 
       {/* Burnout risk gauge & quick calendar block overview (1 col) */}
       <div className="space-y-6">
         {/* Workload assessment */}
-        <div className="h-fit">
+        <ScrollReveal className="h-fit" amount={0.12}>
           <BurnoutGauge metrics={briefing.health_metrics} />
-        </div>
+        </ScrollReveal>
 
         {/* Action widget */}
-        <div className="p-5 rounded-2xl bg-slate-950/60 border border-white/5 backdrop-blur-xl flex flex-col justify-between items-start gap-4">
+        <ScrollReveal amount={0.12}><div className="p-5 rounded-2xl bg-slate-950/60 border border-white/5 backdrop-blur-xl flex flex-col justify-between items-start gap-4">
           <div className="flex items-center gap-2.5">
             <CalendarRange size={16} className="text-blue-300" />
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
@@ -179,6 +180,7 @@ export function BriefingPanel({ briefing }: BriefingPanelProps) {
           <p className="text-xs text-slate-400 font-medium leading-normal">
             Jika beban sedang tinggi, jadwal dapat dirapikan agar deadline tersebar ke slot kosong.
           </p>
+          <MotionCollapse open={scheduledCount !== null} motionKey="briefing-scheduled-result" className="w-full">
           {scheduledCount !== null && (
             <div className="w-full rounded-xl border border-emerald-400/10 bg-emerald-400/5 px-3 py-2 text-xs font-semibold text-emerald-200">
               {scheduledCount === 0
@@ -186,6 +188,7 @@ export function BriefingPanel({ briefing }: BriefingPanelProps) {
                 : `${scheduledCount} block${scheduledCount === 1 ? '' : 's'} scheduled.`}
             </div>
           )}
+          </MotionCollapse>
           <div className="grid w-full grid-cols-1 gap-2">
             <button
               type="button"
@@ -207,10 +210,10 @@ export function BriefingPanel({ briefing }: BriefingPanelProps) {
               Buka Kalender
             </a>
           </div>
-        </div>
+        </div></ScrollReveal>
 
         {context && (
-          <div className="grid grid-cols-2 gap-3">
+          <ScrollReveal className="grid grid-cols-2 gap-3" amount={0.12}>
             <div className="rounded-2xl border border-white/5 bg-slate-950/60 p-4">
               <Droplet className="mb-3 h-4 w-4 text-blue-300" />
               <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Hydration</p>
@@ -221,7 +224,7 @@ export function BriefingPanel({ briefing }: BriefingPanelProps) {
               <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Month Spend</p>
               <p className="mt-1 text-sm font-black text-white">Rp {Math.round(context.monthly_spend).toLocaleString('id-ID')}</p>
             </div>
-          </div>
+          </ScrollReveal>
         )}
       </div>
     </div>

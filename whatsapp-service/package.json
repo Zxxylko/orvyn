@@ -1,0 +1,31 @@
+{
+  "name": "@orvyn/whatsapp-service",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "ORVYN WhatsApp sidecar powered by Baileys",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "6.7.23",
+    "dotenv": "^17.2.0",
+    "express": "^5.1.0",
+    "pino": "^9.7.0",
+    "qrcode": "^1.5.4",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.3",
+    "@types/node": "^24.0.0",
+    "@types/qrcode": "^1.5.5",
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3"
+  }
+}

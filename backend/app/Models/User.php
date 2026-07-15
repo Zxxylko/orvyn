@@ -14,7 +14,7 @@ use Laravel\Sanctum\HasApiTokens;
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
-    use HasFactory, HasApiTokens, HasUuids, Notifiable;
+    use HasApiTokens, HasFactory, HasUuids, Notifiable;
 
     protected $fillable = [
         'firebase_uid',
@@ -101,6 +101,16 @@ class User extends Authenticatable
         return $this->hasMany(HealthLog::class);
     }
 
+    public function whatsappConnection(): HasOne
+    {
+        return $this->hasOne(WhatsAppConnection::class);
+    }
+
+    public function notificationDeliveries(): HasMany
+    {
+        return $this->hasMany(NotificationDelivery::class);
+    }
+
     /**
      * Get or create the student's analytics profile.
      */
@@ -113,11 +123,13 @@ class User extends Authenticatable
         $profile = $this->studentProfile()->first();
         if ($profile) {
             $this->setRelation('studentProfile', $profile);
+
             return $profile;
         }
 
         $profile = $this->studentProfile()->create([]);
         $this->setRelation('studentProfile', $profile);
+
         return $profile;
     }
 }

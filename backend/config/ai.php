@@ -1,6 +1,15 @@
 <?php
 
 return [
+    'provider' => env('AI_PROVIDER', 'ollama'),
+
+    'ollama' => [
+        'base_url' => rtrim(env('OLLAMA_BASE_URL', 'http://127.0.0.1:11434'), '/'),
+        'model' => env('OLLAMA_MODEL', 'qwen3:4b'),
+        'embedding_model' => env('OLLAMA_EMBEDDING_MODEL', 'nomic-embed-text'),
+        'timeout' => (int) env('OLLAMA_TIMEOUT', 60),
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | AI Service Configuration

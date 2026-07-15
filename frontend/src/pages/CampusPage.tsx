@@ -22,6 +22,9 @@ import {
 } from 'lucide-react';
 import { useCampusSchedules } from '@/hooks/useCampusSchedules';
 import type { CampusClassType, CampusSchedule, CreateCampusScheduleData } from '@/types/campus';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { ScrollReveal, StaggerGroup, StaggerItem } from '@/components/ui/motion';
+import { quietEase } from '@/components/ui/motion-config';
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -43,6 +46,7 @@ const DEFAULT_FORM = {
 
 export function CampusPage() {
   const { schedules, loading, createSchedule, updateSchedule, deleteSchedule } = useCampusSchedules();
+  const shouldReduceMotion = useReducedMotion();
   const [form, setForm] = useState(DEFAULT_FORM);
   const [editingSchedule, setEditingSchedule] = useState<CampusSchedule | null>(null);
   const [saving, setSaving] = useState(false);
@@ -137,11 +141,11 @@ export function CampusPage() {
             </p>
           </div>
 
-          <div className="grid grid-cols-3 gap-2 sm:min-w-[420px]">
-            <CampusStat label="Today" value={`${todaySchedules.length}`} detail="classes" icon={CalendarDays} />
-            <CampusStat label="Depart" value={departureTime} detail={nextSchedule?.building ?? 'next class'} icon={Route} />
-            <CampusStat label="Weekly" value={`${Math.round(weeklyMinutes / 60)}h`} detail="scheduled" icon={Clock3} />
-          </div>
+          <StaggerGroup className="grid grid-cols-3 gap-2 sm:min-w-[420px]">
+            <StaggerItem><CampusStat label="Today" value={`${todaySchedules.length}`} detail="classes" icon={CalendarDays} /></StaggerItem>
+            <StaggerItem><CampusStat label="Depart" value={departureTime} detail={nextSchedule?.building ?? 'next class'} icon={Route} /></StaggerItem>
+            <StaggerItem><CampusStat label="Weekly" value={`${Math.round(weeklyMinutes / 60)}h`} detail="scheduled" icon={Clock3} /></StaggerItem>
+          </StaggerGroup>
         </div>
       </section>
 
@@ -168,19 +172,29 @@ export function CampusPage() {
               </div>
             ) : (
               <div className="space-y-3">
+                <AnimatePresence initial={false} mode="popLayout">
                 {todaySchedules.map((schedule) => (
-                  <CampusTodayCard
+                  <motion.div
                     key={schedule.id}
-                    schedule={schedule}
-                    onEdit={() => startEditingSchedule(schedule)}
-                    onDelete={() => deleteSchedule(schedule.id)}
-                  />
+                    layout="position"
+                    initial={shouldReduceMotion ? false : { opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
+                    transition={shouldReduceMotion ? { duration: 0 } : { duration: 0.22, ease: quietEase }}
+                  >
+                    <CampusTodayCard
+                      schedule={schedule}
+                      onEdit={() => startEditingSchedule(schedule)}
+                      onDelete={() => deleteSchedule(schedule.id)}
+                    />
+                  </motion.div>
                 ))}
+                </AnimatePresence>
               </div>
             )}
           </section>
 
-          <WeeklyScheduleGrid schedules={activeSchedules} />
+          <ScrollReveal amount={0.12}><WeeklyScheduleGrid schedules={activeSchedules} /></ScrollReveal>
         </div>
 
         <div className="space-y-6">
@@ -314,7 +328,7 @@ export function CampusPage() {
             </form>
           </section>
 
-          <CampusReadinessPanel nextSchedule={nextSchedule} />
+          <ScrollReveal amount={0.12}><CampusReadinessPanel nextSchedule={nextSchedule} /></ScrollReveal>
         </div>
       </div>
     </div>

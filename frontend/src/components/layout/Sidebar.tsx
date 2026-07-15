@@ -1,49 +1,25 @@
 import { useEffect, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Calendar, Brain, ChevronLeft, ChevronRight, LogOut, GraduationCap, Wallet, Activity, MapPin, Compass } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { ChevronLeft, ChevronRight, LogOut } from 'lucide-react';
+import { motion, useReducedMotion } from 'framer-motion';
 import { useAuth } from '@/contexts/auth';
 import { cn } from '@/lib/utils';
+import { navigationGroups } from './navigation';
 
 export function Sidebar() {
   const [isCollapsed, setIsCollapsed] = useState(() => localStorage.getItem('orvyn-sidebar-collapsed') === 'true');
   const { logout, user } = useAuth();
   const location = useLocation();
+  const shouldReduceMotion = useReducedMotion();
 
   useEffect(() => {
     localStorage.setItem('orvyn-sidebar-collapsed', String(isCollapsed));
   }, [isCollapsed]);
 
-  const navGroups = [
-    {
-      label: 'Harian',
-      items: [
-        { to: '/dashboard', label: 'Beranda', icon: LayoutDashboard },
-        { to: '/student-hub', label: 'Student Hub', icon: Compass },
-        { to: '/calendar', label: 'Jadwal Belajar', icon: Calendar },
-        { to: '/briefing', label: 'Ringkasan Harian', icon: Brain },
-      ],
-    },
-    {
-      label: 'Mahasiswa',
-      items: [
-        { to: '/academic', label: 'Tugas Kuliah', icon: GraduationCap },
-        { to: '/campus', label: 'Kampus', icon: MapPin },
-      ],
-    },
-    {
-      label: 'Pribadi',
-      items: [
-        { to: '/finance', label: 'Uang Bulanan', icon: Wallet },
-        { to: '/health', label: 'Kesehatan', icon: Activity },
-      ],
-    },
-  ];
-
   return (
     <aside
       className={cn(
-        "relative z-20 flex h-screen flex-col border-r border-white/10 bg-white/[0.045] backdrop-blur-2xl transition-all duration-300 ease-in-out",
+        "relative z-20 hidden h-screen flex-col border-r border-white/10 bg-white/[0.045] backdrop-blur-2xl transition-all duration-300 ease-in-out md:flex",
         isCollapsed ? "w-20" : "w-64"
       )}
     >
@@ -70,7 +46,7 @@ export function Sidebar() {
 
       {/* Navigation list */}
       <nav className="flex-1 space-y-5 px-3 py-6">
-        {navGroups.map((group) => (
+        {navigationGroups.map((group) => (
           <div key={group.label} className="space-y-1.5">
             {!isCollapsed && (
               <p className="px-3 text-[10px] font-bold uppercase tracking-widest text-slate-600">
@@ -94,11 +70,21 @@ export function Sidebar() {
                   {isActive && (
                     <motion.span
                       layoutId="sidebar-active"
+                      aria-hidden="true"
                       className="absolute inset-0 rounded-xl border border-white/15 bg-white/[0.12] shadow-inner shadow-white/5"
-                      transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+                      transition={shouldReduceMotion
+                        ? { duration: 0 }
+                        : { duration: 0.24, ease: [0.22, 1, 0.36, 1] }
+                      }
                     />
                   )}
-                  <Icon size={20} className="relative z-10 shrink-0 transition-transform group-hover:scale-105" />
+                  <Icon
+                    size={20}
+                    className={cn(
+                      "relative z-10 shrink-0 transition-transform group-hover:scale-105",
+                      isActive && "text-cyan-200"
+                    )}
+                  />
                   {!isCollapsed && <span className="relative z-10 truncate">{item.label}</span>}
                   
                   {/* Tooltip for collapsed mode */}

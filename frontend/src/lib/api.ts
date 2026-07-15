@@ -16,6 +16,15 @@ export const api = axios.create({
 
 export function getApiErrorMessage(error: unknown, fallback: string): string {
   if (isAxiosError(error)) {
+    if (error.response?.status === 429) {
+      const retryAfter = Number(error.response.headers['retry-after']);
+      if (Number.isFinite(retryAfter) && retryAfter > 0) {
+        return `Terlalu banyak percobaan. Coba lagi dalam ${Math.ceil(retryAfter)} detik.`;
+      }
+
+      return 'Terlalu banyak percobaan. Coba lagi sebentar lagi.';
+    }
+
     const message = (error.response?.data as { message?: unknown } | undefined)?.message;
     if (typeof message === 'string' && message.trim()) {
       return message;
@@ -32,6 +41,9 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    if (config.method && config.method.toLowerCase() !== 'get') {
+      window.dispatchEvent(new CustomEvent('orvyn:sync-start'));
+    }
     return config;
   },
   (error) => {
@@ -41,8 +53,16 @@ api.interceptors.request.use(
 
 // Response interceptor for error handling
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    if (response.config.method && response.config.method.toLowerCase() !== 'get') {
+      window.dispatchEvent(new CustomEvent('orvyn:sync-success'));
+    }
+    return response;
+  },
   (error) => {
+    if (error.config?.method && error.config.method.toLowerCase() !== 'get') {
+      window.dispatchEvent(new CustomEvent('orvyn:sync-error'));
+    }
     if (error.response?.status === 401) {
       // Clear token and redirect to login
       localStorage.removeItem('auth_token');
@@ -345,6 +365,30 @@ export const userApi = {
   me: () => {
     return api.get('/user/me');
   },
+};
+
+export const whatsappApi = {
+  getSettings: () => api.get('/integrations/whatsapp'),
+  updateSettings: (data: {
+    phone_number: string | null;
+    enabled: boolean;
+    timezone: string;
+    daily_briefing_time: string;
+    reminder_lead_minutes: number;
+    reminder_schedule: {
+      daily_briefing_time: string;
+      deadline_lead_minutes: number[];
+      progress_checkin_time: string;
+      burnout_checkin_time: string;
+      habit_checkin_time: string;
+      weekly_review_day: number;
+      weekly_review_time: string;
+    };
+    features: Record<string, boolean>;
+    consent?: boolean;
+  }) => api.patch('/integrations/whatsapp', data),
+  connect: () => api.post('/integrations/whatsapp/connect'),
+  sendTest: () => api.post('/integrations/whatsapp/test'),
 };
 
 export default api;
