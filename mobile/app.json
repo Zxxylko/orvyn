@@ -1,0 +1,81 @@
+{
+  "expo": {
+    "name": "ORVYN",
+    "slug": "orvyn",
+    "scheme": "orvyn",
+    "version": "1.0.0",
+    "platforms": [
+      "ios",
+      "android",
+      "web"
+    ],
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0B0F14",
+    "primaryColor": "#22D3EE",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "app.orvyn.mobile",
+      "config": {
+        "usesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "app.orvyn.mobile",
+      "allowBackup": false,
+      "adaptiveIcon": {
+        "backgroundColor": "#0B0F14",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "fallbackToCacheTimeout": 0,
+      "url": "https://u.expo.dev/7e164774-2ac4-4d17-aa89-840c4971928b"
+    },
+    "plugins": [
+      [
+        "expo-secure-store",
+        {
+          "configureAndroidBackup": true
+        }
+      ],
+      "expo-font",
+      "expo-system-ui",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#0B0F14",
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 190,
+          "resizeMode": "contain",
+          "dark": {
+            "backgroundColor": "#0B0F14",
+            "image": "./assets/splash-icon.png"
+          }
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#22D3EE",
+          "defaultChannel": "orvyn-reminders"
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "7e164774-2ac4-4d17-aa89-840c4971928b"
+      }
+    },
+    "owner": "zxxylko-2s-team"
+  }
+}

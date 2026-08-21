@@ -6,18 +6,21 @@ use App\Models\NotificationDelivery;
 use App\Models\User;
 use App\Services\WhatsApp\WhatsAppGateway;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 
-class SendWhatsAppMessageJob implements ShouldQueue
+class SendWhatsAppMessageJob implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 3;
 
     public array $backoff = [30, 120, 300];
+
+    public int $uniqueFor = 3600;
 
     public function __construct(
         public string $userId,
@@ -27,11 +30,16 @@ class SendWhatsAppMessageJob implements ShouldQueue
         public array $metadata = [],
     ) {}
 
+    public function uniqueId(): string
+    {
+        return $this->dedupeKey;
+    }
+
     public function handle(WhatsAppGateway $gateway): void
     {
         $user = User::find($this->userId);
         $connection = $user?->whatsappConnection;
-        if (! $user || ! $connection?->enabled || ! $connection->phone_number) {
+        if (! $user || ! $connection?->enabled || ! $connection->phone_number || ! $connection->phone_verified_at) {
             return;
         }
 

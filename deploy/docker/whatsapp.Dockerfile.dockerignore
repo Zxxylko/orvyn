@@ -1,0 +1,14 @@
+*
+!whatsapp-service/
+whatsapp-service/*
+!whatsapp-service/src/
+!whatsapp-service/src/**
+!whatsapp-service/package.json
+!whatsapp-service/package-lock.json
+!whatsapp-service/tsconfig.json
+!deploy/
+deploy/*
+!deploy/docker/
+deploy/docker/*
+!deploy/docker/whatsapp.Dockerfile
+!deploy/docker/whatsapp-entrypoint.sh

@@ -15,7 +15,12 @@ class WhatsAppConnection extends Model
     protected $fillable = [
         'user_id', 'phone_number', 'enabled', 'timezone', 'daily_briefing_time',
         'reminder_lead_minutes', 'reminder_schedule', 'features', 'consent_at',
-        'last_inbound_at', 'last_outbound_at',
+        'last_inbound_at', 'last_outbound_at', 'phone_verified_at',
+        'verification_code_hash', 'verification_expires_at', 'verification_attempts',
+    ];
+
+    protected $hidden = [
+        'verification_code_hash',
     ];
 
     protected function casts(): array
@@ -26,6 +31,9 @@ class WhatsAppConnection extends Model
             'reminder_schedule' => 'array',
             'features' => 'array',
             'consent_at' => 'datetime',
+            'phone_verified_at' => 'datetime',
+            'verification_expires_at' => 'datetime',
+            'verification_attempts' => 'integer',
             'last_inbound_at' => 'datetime',
             'last_outbound_at' => 'datetime',
         ];

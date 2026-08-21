@@ -63,19 +63,25 @@ cd backend && php artisan schedule:work
 
 Kemudian buka menu akun **Preferensi Sistem**, isi nomor, berikan consent, simpan, klik **Hubungkan**, dan scan QR.
 
+ORVYN mendukung perintah yang dikirim ke chat nomor sendiri. Setelah status berubah menjadi **Terhubung**, kirim `Menu` untuk menguji alur pesan masuk, identifikasi pengguna, dan balasan.
+
 ## Keamanan dan operasi
 
 - Port sidecar tidak boleh diekspos langsung ke internet.
 - Laravel → sidecar memakai bearer token.
 - Sidecar → webhook Laravel memakai HMAC SHA-256.
 - Pesan masuk dan keluar memiliki dedupe key agar aksi tidak dijalankan dua kali.
+- Baileys v7 menangani pemetaan PN/LID; sinkronisasi metadata awal harus tetap aktif, sedangkan sinkronisasi riwayat penuh dinonaktifkan.
+- Log internal Baileys dibuat `silent` secara default karena dapat memuat metadata JID/nomor.
 - Session Baileys berada di `whatsapp-service/sessions/` dan diabaikan Git.
+- Jika session lama terus gagal mendekripsi pesan, lepaskan perangkat ORVYN dari **Perangkat tertaut** lalu scan QR baru. Jangan membagikan atau menyalin folder session.
 - Gunakan hanya untuk pengguna yang opt-in; hindari broadcast dan spam.
 - Untuk produksi publik, implementasikan driver Meta Cloud API di balik `WhatsAppGateway`.
 
 ## Contoh chat
 
 ```text
+Menu
 tambah tugas laporan keamanan besok prioritas tinggi
 tugas hari ini
 jadwal besok

@@ -1,16 +1,27 @@
 import { useEffect, useState } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink } from '@/lib/router';
+import { useLocation } from '@/lib/router-hooks';
 import { ChevronLeft, ChevronRight, LogOut } from 'lucide-react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { useAuth } from '@/contexts/auth';
 import { cn } from '@/lib/utils';
 import { navigationGroups } from './navigation';
+import { toast } from 'sonner';
+import { getApiErrorMessage } from '@/lib/api';
 
 export function Sidebar() {
   const [isCollapsed, setIsCollapsed] = useState(() => localStorage.getItem('orvyn-sidebar-collapsed') === 'true');
   const { logout, user } = useAuth();
   const location = useLocation();
   const shouldReduceMotion = useReducedMotion();
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, 'Sesi belum dapat diakhiri. Coba lagi.'));
+    }
+  };
 
   useEffect(() => {
     localStorage.setItem('orvyn-sidebar-collapsed', String(isCollapsed));
@@ -114,7 +125,7 @@ export function Sidebar() {
           </div>
         )}
         <button
-          onClick={logout}
+          onClick={() => void handleLogout()}
           className={cn(
             "focus-ring interactive-surface flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm font-medium text-rose-400 hover:bg-rose-500/10 transition cursor-pointer",
             isCollapsed ? "justify-center" : ""

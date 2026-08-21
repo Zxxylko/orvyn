@@ -1,0 +1,666 @@
+name: orvyn
+
+x-local-logging: &local-logging
+  driver: local
+  options:
+    max-size: "20m"
+    max-file: "5"
+
+x-backend-environment: &backend-environment
+  APP_NAME: ORVYN
+  APP_ENV: production
+  APP_DEBUG: "false"
+  APP_URL: "https://${ORVYN_DOMAIN:?ORVYN_DOMAIN is required}"
+  APP_KEY_FILE: /run/secrets/app_key
+  APP_LOCALE: id
+  APP_FALLBACK_LOCALE: en
+  APP_MAINTENANCE_DRIVER: cache
+  APP_MAINTENANCE_STORE: redis
+  PRODUCTION_READINESS_ENFORCED: "true"
+  TRUSTED_PROXIES: 172.28.0.10
+  TRUSTED_HOSTS: "${ORVYN_TRUSTED_HOSTS:?ORVYN_TRUSTED_HOSTS is required}"
+  DEMO_LOGIN_ENABLED: "false"
+  ORVYN_TOKEN_EXPIRATION_MINUTES: "1440"
+  LOG_CHANNEL: stderr
+  LOG_LEVEL: warning
+  DB_CONNECTION: pgsql
+  DB_HOST: postgres
+  DB_PORT: "5432"
+  DB_DATABASE: orvyn
+  DB_USERNAME: orvyn_app
+  DB_PASSWORD_FILE: /run/secrets/postgres_app_password
+  DB_SSLMODE: disable
+  REDIS_CLIENT: phpredis
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  REDIS_USERNAME: default
+  REDIS_PASSWORD_FILE: /run/secrets/redis_password
+  REDIS_DB: "0"
+  REDIS_CACHE_DB: "1"
+  QUEUE_CONNECTION: redis
+  CACHE_STORE: redis
+  SESSION_DRIVER: redis
+  SESSION_CONNECTION: default
+  SESSION_DOMAIN: "${ORVYN_COOKIE_DOMAIN:?ORVYN_COOKIE_DOMAIN is required}"
+  SESSION_SECURE_COOKIE: "true"
+  SESSION_HTTP_ONLY: "true"
+  SESSION_ENCRYPT: "true"
+  SESSION_LIFETIME: "480"
+  SESSION_SAME_SITE: lax
+  SESSION_PARTITIONED_COOKIE: "false"
+  CORS_ALLOWED_ORIGINS: "https://${ORVYN_DOMAIN}"
+  SANCTUM_STATEFUL_DOMAINS: "${ORVYN_DOMAIN}"
+  BROADCAST_CONNECTION: reverb
+  REVERB_APP_ID: "${REVERB_APP_ID:-orvyn-production}"
+  REVERB_APP_KEY: "${REVERB_APP_KEY:?REVERB_APP_KEY is required}"
+  REVERB_APP_SECRET_FILE: /run/secrets/reverb_app_secret
+  REVERB_HOST: reverb
+  REVERB_PORT: "8080"
+  REVERB_SCHEME: http
+  REVERB_SERVER_HOST: 0.0.0.0
+  REVERB_SERVER_PORT: "8080"
+  REVERB_ALLOWED_ORIGINS: "https://${ORVYN_DOMAIN}"
+  REVERB_APP_MAX_CONNECTIONS: "${REVERB_APP_MAX_CONNECTIONS:-500}"
+  REVERB_APP_RATE_LIMITING_ENABLED: "true"
+  REVERB_APP_RATE_LIMIT_MAX_ATTEMPTS: "${REVERB_APP_RATE_LIMIT_MAX_ATTEMPTS:-60}"
+  REVERB_APP_RATE_LIMIT_DECAY_SECONDS: "60"
+  REVERB_APP_RATE_LIMIT_TERMINATE: "true"
+  REVERB_APP_ACCEPT_CLIENT_EVENTS_FROM: members
+  REVERB_SCALING_ENABLED: "false"
+  FIREBASE_AUTH_REQUIRED: "true"
+  FIREBASE_PROJECT_ID: "${FIREBASE_PROJECT_ID:?FIREBASE_PROJECT_ID is required}"
+  FIREBASE_REAUTH_MAX_AGE_SECONDS: "${FIREBASE_REAUTH_MAX_AGE_SECONDS:?FIREBASE_REAUTH_MAX_AGE_SECONDS is required}"
+  FIREBASE_CREDENTIALS: /run/secrets/firebase_credentials
+  EXPO_PUSH_ENABLED: "${EXPO_PUSH_ENABLED:-true}"
+  EXPO_PUSH_URL: https://exp.host/--/api/v2/push/send
+  EXPO_ACCESS_TOKEN_FILE: /run/secrets/expo_access_token
+  EXPO_PUSH_TIMEOUT: "15"
+  AI_PROVIDER: ollama
+  AI_CLOUD_FALLBACK_ENABLED: "false"
+  AI_CLOUD_REQUIRES_USER_CONSENT: "true"
+  AI_ENABLE_FALLBACK: "true"
+  OLLAMA_BASE_URL: http://ollama:11434
+  OLLAMA_MODEL: "${OLLAMA_MODEL:-qwen3:4b}"
+  OLLAMA_EMBEDDING_MODEL: "${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}"
+  OLLAMA_TIMEOUT: "60"
+  OPENCLAW_ENABLED: "false"
+  WHATSAPP_DRIVER: baileys
+  WHATSAPP_BAILEYS_PRODUCTION_ACKNOWLEDGED: "${WHATSAPP_BAILEYS_PRODUCTION_ACKNOWLEDGED:?explicit Baileys risk acknowledgement is required}"
+  WHATSAPP_SERVICE_URL: http://whatsapp:3100
+  WHATSAPP_SERVICE_TOKEN_FILE: /run/secrets/whatsapp_service_token
+  WHATSAPP_WEBHOOK_SECRET_FILE: /run/secrets/whatsapp_webhook_secret
+  WHATSAPP_WEBHOOK_MAX_AGE_SECONDS: "300"
+  WHATSAPP_SESSION_ADMIN_EMAILS: "${WHATSAPP_SESSION_ADMIN_EMAILS:?WhatsApp admin email is required}"
+  WHATSAPP_VERIFICATION_TTL_MINUTES: "10"
+  WHATSAPP_VERIFICATION_MAX_ATTEMPTS: "5"
+  WHATSAPP_TIMEOUT: "10"
+  WHATSAPP_DEFAULT_TIMEZONE: "${ORVYN_TIMEZONE:-Asia/Jakarta}"
+  HORIZON_DASHBOARD_ENABLED: "false"
+  FILESYSTEM_DISK: local
+  ORVYN_CACHE_CONFIG: "true"
+
+x-backend-secrets: &backend-secrets
+  - app_key
+  - postgres_app_password
+  - redis_password
+  - reverb_app_secret
+  - whatsapp_service_token
+  - whatsapp_webhook_secret
+  - firebase_credentials
+  - expo_access_token
+
+x-backend-security: &backend-security
+  init: true
+  read_only: true
+  cap_drop:
+    - ALL
+  cap_add:
+    - CHOWN
+    - DAC_OVERRIDE
+    - FOWNER
+    - SETGID
+    - SETUID
+  security_opt:
+    - no-new-privileges:true
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,nodev,size=64m,uid=10001,gid=10001,mode=1770
+    - /var/www/html/bootstrap/cache:rw,noexec,nosuid,nodev,size=32m,uid=10001,gid=10001,mode=0700
+    - /var/www/html/storage/framework:rw,noexec,nosuid,nodev,size=128m,uid=10001,gid=10001,mode=0700
+    - /var/www/html/storage/logs:rw,noexec,nosuid,nodev,size=32m,uid=10001,gid=10001,mode=0700
+  logging: *local-logging
+
+services:
+  edge:
+    image: "${ORVYN_IMAGE_NAMESPACE:-orvyn}/edge:${ORVYN_RELEASE_ID:?ORVYN_RELEASE_ID is required}"
+    build:
+      context: ..
+      dockerfile: deploy/docker/frontend.Dockerfile
+      args:
+        ORVYN_RELEASE_ID: "${ORVYN_RELEASE_ID}"
+        VITE_API_URL: /api/v1
+        VITE_APP_NAME: ORVYN
+        VITE_DEMO_LOGIN_ENABLED: "false"
+        VITE_FIREBASE_API_KEY: "${VITE_FIREBASE_API_KEY:?Firebase web API key is required}"
+        VITE_FIREBASE_AUTH_DOMAIN: "${VITE_FIREBASE_AUTH_DOMAIN:?Firebase auth domain is required}"
+        VITE_FIREBASE_PROJECT_ID: "${VITE_FIREBASE_PROJECT_ID:?Firebase project ID is required}"
+        VITE_FIREBASE_STORAGE_BUCKET: "${VITE_FIREBASE_STORAGE_BUCKET:?Firebase storage bucket is required}"
+        VITE_FIREBASE_MESSAGING_SENDER_ID: "${VITE_FIREBASE_MESSAGING_SENDER_ID:?Firebase sender ID is required}"
+        VITE_FIREBASE_APP_ID: "${VITE_FIREBASE_APP_ID:?Firebase app ID is required}"
+        VITE_REVERB_APP_KEY: "${REVERB_APP_KEY}"
+        VITE_REVERB_HOST: "${ORVYN_DOMAIN}"
+        VITE_REVERB_PORT: "443"
+        VITE_REVERB_SCHEME: wss
+        VITE_CSRF_COOKIE_URL: /sanctum/csrf-cookie
+        VITE_BROADCAST_AUTH_ENDPOINT: /broadcasting/auth
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "80:80/tcp"
+      - "443:443/tcp"
+      - "443:443/udp"
+    environment:
+      ORVYN_DOMAIN: "${ORVYN_DOMAIN}"
+      ACME_EMAIL: "${ACME_EMAIL:?ACME_EMAIL is required}"
+      FIREBASE_AUTH_DOMAIN: "${VITE_FIREBASE_AUTH_DOMAIN}"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=32m,uid=10001,gid=10001,mode=1770
+    networks:
+      app_net:
+        ipv4_address: 172.28.0.10
+    depends_on:
+      api:
+        condition: service_healthy
+      reverb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:2019/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    mem_limit: 256m
+    cpus: 1.0
+    pids_limit: 128
+    logging: *local-logging
+
+  api:
+    image: "${ORVYN_IMAGE_NAMESPACE:-orvyn}/backend:${ORVYN_RELEASE_ID}"
+    entrypoint: []
+    command: ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
+    user: "10001:10001"
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      ORVYN_DOMAIN: "${ORVYN_DOMAIN}"
+    volumes:
+      - app_storage:/var/www/html/storage/app:ro
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=32m,uid=10001,gid=10001,mode=1770
+    networks:
+      app_net:
+        ipv4_address: 172.28.0.20
+    depends_on:
+      php:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "-H", "Host: api", "http://127.0.0.1:8080/up"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    mem_limit: 256m
+    cpus: 1.0
+    pids_limit: 128
+    logging: *local-logging
+
+  php:
+    image: "${ORVYN_IMAGE_NAMESPACE:-orvyn}/backend:${ORVYN_RELEASE_ID}"
+    build:
+      context: ..
+      dockerfile: deploy/docker/backend.Dockerfile
+      args:
+        ORVYN_RELEASE_ID: "${ORVYN_RELEASE_ID}"
+    restart: unless-stopped
+    <<: *backend-security
+    environment: *backend-environment
+    secrets: *backend-secrets
+    volumes:
+      - app_storage:/var/www/html/storage/app
+    networks:
+      app_net:
+        ipv4_address: 172.28.0.21
+      data_net:
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "php", "-r", "$$s=@fsockopen('127.0.0.1',9000);exit($$s?0:1);"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
+    mem_limit: 768m
+    cpus: 2.0
+    pids_limit: 256
+
+  worker:
+    image: "${ORVYN_IMAGE_NAMESPACE:-orvyn}/backend:${ORVYN_RELEASE_ID}"
+    command: ["php", "artisan", "horizon"]
+    restart: unless-stopped
+    stop_grace_period: 180s
+    <<: *backend-security
+    environment: *backend-environment
+    secrets: *backend-secrets
+    volumes:
+      - app_storage:/var/www/html/storage/app
+    networks:
+      - app_net
+      - data_net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "php", "-r", "$$r=new Redis();$$r->connect('redis',6379,3);$$r->auth(['default',trim(file_get_contents('/run/secrets/redis_password'))]);exit($$r->ping()?0:1);"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 45s
+    mem_limit: 1g
+    cpus: 2.0
+    pids_limit: 256
+
+  scheduler:
+    image: "${ORVYN_IMAGE_NAMESPACE:-orvyn}/backend:${ORVYN_RELEASE_ID}"
+    command: ["php", "artisan", "schedule:work", "--no-interaction"]
+    restart: unless-stopped
+    stop_grace_period: 60s
+    <<: *backend-security
+    environment: *backend-environment
+    secrets: *backend-secrets
+    volumes:
+      - app_storage:/var/www/html/storage/app
+    networks:
+      - app_net
+      - data_net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "php", "-r", "$$r=new Redis();$$r->connect('redis',6379,3);$$r->auth(['default',trim(file_get_contents('/run/secrets/redis_password'))]);exit($$r->ping()?0:1);"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 45s
+    mem_limit: 384m
+    cpus: 1.0
+    pids_limit: 128
+
+  reverb:
+    image: "${ORVYN_IMAGE_NAMESPACE:-orvyn}/backend:${ORVYN_RELEASE_ID}"
+    command: ["php", "artisan", "reverb:start", "--host=0.0.0.0", "--port=8080", "--no-interaction"]
+    restart: unless-stopped
+    stop_grace_period: 30s
+    <<: *backend-security
+    environment: *backend-environment
+    secrets: *backend-secrets
+    networks:
+      app_net:
+        ipv4_address: 172.28.0.22
+      data_net:
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "php", "-r", "$$s=@fsockopen('127.0.0.1',8080);exit($$s?0:1);"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    mem_limit: 384m
+    cpus: 1.0
+    pids_limit: 128
+
+  whatsapp:
+    image: "${ORVYN_IMAGE_NAMESPACE:-orvyn}/whatsapp:${ORVYN_RELEASE_ID}"
+    build:
+      context: ..
+      dockerfile: deploy/docker/whatsapp.Dockerfile
+      args:
+        ORVYN_RELEASE_ID: "${ORVYN_RELEASE_ID}"
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: "3100"
+      ORVYN_API_URL: http://api:8080
+      WHATSAPP_SERVICE_TOKEN_FILE: /run/secrets/whatsapp_service_token
+      WHATSAPP_WEBHOOK_SECRET_FILE: /run/secrets/whatsapp_webhook_secret
+      WHATSAPP_SESSION_PATH: /var/lib/orvyn-whatsapp/session
+      WHATSAPP_AUTO_CONNECT: "true"
+      LOG_LEVEL: warning
+      BAILEYS_LOG_LEVEL: silent
+    secrets:
+      - whatsapp_service_token
+      - whatsapp_webhook_secret
+    volumes:
+      - whatsapp_sessions:/var/lib/orvyn-whatsapp
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m,uid=10001,gid=10001,mode=1770
+    networks:
+      app_net:
+        ipv4_address: 172.28.0.23
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3100/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    mem_limit: 768m
+    cpus: 1.5
+    pids_limit: 256
+    logging: *local-logging
+
+  postgres:
+    image: pgvector/pgvector:0.8.5-pg17-bookworm
+    entrypoint: ["/usr/local/bin/orvyn-postgres-entrypoint"]
+    restart: unless-stopped
+    read_only: true
+    shm_size: 256m
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      POSTGRES_DB: orvyn
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_admin_password
+      POSTGRES_APP_PASSWORD_FILE: /run/secrets/postgres_app_password
+      POSTGRES_BACKUP_PASSWORD_FILE: /run/secrets/postgres_backup_password
+      PGDATA: /var/lib/postgresql/data/pgdata
+    secrets:
+      - postgres_admin_password
+      - postgres_app_password
+      - postgres_backup_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres-entrypoint.sh:/usr/local/bin/orvyn-postgres-entrypoint:ro
+      - ./docker/postgres-init.sh:/docker-entrypoint-initdb.d/10-orvyn-secure-init.sh:ro
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m
+      - /var/run/postgresql:rw,nosuid,nodev,size=16m
+      - /run/orvyn-postgres-secrets:rw,noexec,nosuid,nodev,size=1m
+    networks:
+      data_net:
+        ipv4_address: 172.29.0.10
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready --quiet --host=127.0.0.1 --username=postgres --dbname=orvyn"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    mem_limit: 2g
+    cpus: 2.0
+    pids_limit: 256
+    logging: *local-logging
+
+  redis:
+    image: redis:7.4.9-alpine
+    entrypoint: ["/usr/local/bin/orvyn-redis-entrypoint"]
+    restart: unless-stopped
+    read_only: true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      REDIS_PASSWORD_FILE: /run/secrets/redis_password
+    secrets:
+      - redis_password
+    volumes:
+      - redis_data:/data
+      - ./docker/redis-entrypoint.sh:/usr/local/bin/orvyn-redis-entrypoint:ro
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=32m
+      - /run/orvyn-redis:rw,noexec,nosuid,nodev,size=8m
+    networks:
+      data_net:
+        ipv4_address: 172.29.0.11
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$(cat /run/secrets/redis_password)\" redis-cli -h 127.0.0.1 --no-auth-warning ping | grep -qx PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    mem_limit: 768m
+    cpus: 1.0
+    pids_limit: 128
+    logging: *local-logging
+
+  ollama:
+    image: ollama/ollama:0.32.3
+    profiles:
+      - ai
+    restart: unless-stopped
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+      OLLAMA_KEEP_ALIVE: 10m
+      OLLAMA_MAX_QUEUE: "64"
+      OLLAMA_NUM_PARALLEL: "1"
+    volumes:
+      - ollama_models:/root/.ollama
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=128m
+    networks:
+      app_net:
+        ipv4_address: 172.28.0.24
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    mem_limit: "${OLLAMA_MEMORY_LIMIT:-6g}"
+    cpus: "${OLLAMA_CPU_LIMIT:-4.0}"
+    pids_limit: 512
+    logging: *local-logging
+
+  readiness:
+    image: "${ORVYN_IMAGE_NAMESPACE:-orvyn}/backend:${ORVYN_RELEASE_ID}"
+    profiles:
+      - tools
+    command: ["php", "artisan", "orvyn:production-check"]
+    <<: *backend-security
+    environment: *backend-environment
+    secrets: *backend-secrets
+    networks:
+      - app_net
+      - data_net
+
+  migrate:
+    image: "${ORVYN_IMAGE_NAMESPACE:-orvyn}/backend:${ORVYN_RELEASE_ID}"
+    profiles:
+      - tools
+    command: ["php", "artisan", "migrate", "--force", "--isolated", "--no-interaction"]
+    <<: *backend-security
+    environment: *backend-environment
+    secrets: *backend-secrets
+    networks:
+      - app_net
+      - data_net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  backup:
+    image: "${ORVYN_IMAGE_NAMESPACE:-orvyn}/backup:${ORVYN_RELEASE_ID}"
+    build:
+      context: ..
+      dockerfile: deploy/docker/backup.Dockerfile
+      args:
+        ORVYN_RELEASE_ID: "${ORVYN_RELEASE_ID}"
+    profiles:
+      - backup
+    read_only: true
+    cap_drop:
+      - ALL
+    cap_add:
+      - DAC_READ_SEARCH
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: orvyn
+      PGUSER: orvyn_backup
+      POSTGRES_BACKUP_PASSWORD_FILE: /run/secrets/postgres_backup_password
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD_FILE: /run/secrets/redis_password
+      RESTIC_REPOSITORY_FILE: /run/secrets/restic_repository
+      RESTIC_PASSWORD_FILE: /run/secrets/restic_password
+      RESTIC_CACHE_DIR: /tmp/restic-cache
+      RESTIC_SSH_KEY_FILE: /run/secrets/restic_ssh_key
+      RESTIC_KNOWN_HOSTS_FILE: /run/secrets/restic_known_hosts
+      RESTIC_KEEP_DAILY: "${RESTIC_KEEP_DAILY:-14}"
+      RESTIC_KEEP_WEEKLY: "${RESTIC_KEEP_WEEKLY:-8}"
+      RESTIC_KEEP_MONTHLY: "${RESTIC_KEEP_MONTHLY:-12}"
+    secrets:
+      - postgres_backup_password
+      - redis_password
+      - restic_repository
+      - restic_password
+      - restic_ssh_key
+      - restic_known_hosts
+    volumes:
+      - app_storage:/data/app-storage:ro
+      - caddy_data:/data/caddy:ro
+      - redis_data:/data/redis:ro
+      - whatsapp_sessions:/data/whatsapp:ro
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=128m
+    networks:
+      - app_net
+      - data_net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    mem_limit: 1g
+    cpus: 2.0
+    pids_limit: 256
+    logging: *local-logging
+
+networks:
+  app_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24
+  data_net:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.29.0.0/24
+
+volumes:
+  app_storage:
+    name: orvyn_app_storage
+  caddy_config:
+    name: orvyn_caddy_config
+  caddy_data:
+    name: orvyn_caddy_data
+  ollama_models:
+    name: orvyn_ollama_models
+  postgres_data:
+    name: orvyn_postgres_data
+  redis_data:
+    name: orvyn_redis_data
+  whatsapp_sessions:
+    name: orvyn_whatsapp_sessions
+
+secrets:
+  app_key:
+    file: "${ORVYN_SECRETS_DIR:?ORVYN_SECRETS_DIR is required}/app_key"
+  postgres_admin_password:
+    file: "${ORVYN_SECRETS_DIR}/postgres_admin_password"
+  postgres_app_password:
+    file: "${ORVYN_SECRETS_DIR}/postgres_app_password"
+  postgres_backup_password:
+    file: "${ORVYN_SECRETS_DIR}/postgres_backup_password"
+  redis_password:
+    file: "${ORVYN_SECRETS_DIR}/redis_password"
+  reverb_app_secret:
+    file: "${ORVYN_SECRETS_DIR}/reverb_app_secret"
+  whatsapp_service_token:
+    file: "${ORVYN_SECRETS_DIR}/whatsapp_service_token"
+  whatsapp_webhook_secret:
+    file: "${ORVYN_SECRETS_DIR}/whatsapp_webhook_secret"
+  firebase_credentials:
+    file: "${ORVYN_SECRETS_DIR}/firebase_credentials.json"
+  expo_access_token:
+    file: "${ORVYN_SECRETS_DIR}/expo_access_token"
+  restic_repository:
+    file: "${ORVYN_SECRETS_DIR}/restic_repository"
+  restic_password:
+    file: "${ORVYN_SECRETS_DIR}/restic_password"
+  restic_ssh_key:
+    file: "${ORVYN_SECRETS_DIR}/restic_ssh_key"
+  restic_known_hosts:
+    file: "${ORVYN_SECRETS_DIR}/restic_known_hosts"

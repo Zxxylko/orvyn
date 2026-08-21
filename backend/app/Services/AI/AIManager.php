@@ -11,31 +11,55 @@ class AIManager
         private GeminiService $gemini,
     ) {}
 
-    public function parseTask(string $input): array
+    public function parseTask(string $input, ?User $user = null): array
     {
         if ($this->usesOllama()) {
-            return $this->ollama->parseTask($input) ?? $this->gemini->parseTask($input);
+            $parsed = $this->ollama->parseTask($input);
+            if ($parsed !== null) {
+                return $parsed;
+            }
+
+            return $this->cloudFallbackEnabled() && $this->cloudProcessingAllowed($user)
+                ? $this->gemini->parseTask($input)
+                : $this->gemini->deterministicTaskFallback($input);
         }
 
-        return $this->gemini->parseTask($input);
+        return $this->cloudProcessingAllowed($user)
+            ? $this->gemini->parseTask($input)
+            : $this->gemini->deterministicTaskFallback($input);
     }
 
     public function generateBriefing(User $user, array $context): array
     {
         if ($this->usesOllama()) {
-            return $this->ollama->generateBriefing($user, $context) ?? $this->gemini->generateBriefing($user, $context);
+            $briefing = $this->ollama->generateBriefing($user, $context);
+            if ($briefing !== null) {
+                return $briefing;
+            }
+
+            return $this->cloudFallbackEnabled() && $this->cloudProcessingAllowed($user)
+                ? $this->gemini->generateBriefing($user, $context)
+                : $this->gemini->deterministicBriefingFallback($context);
         }
 
-        return $this->gemini->generateBriefing($user, $context);
+        return $this->cloudProcessingAllowed($user)
+            ? $this->gemini->generateBriefing($user, $context)
+            : $this->gemini->deterministicBriefingFallback($context);
     }
 
-    public function generateEmbedding(string $text): ?array
+    public function generateEmbedding(string $text, ?User $user = null): ?array
     {
         if ($this->usesOllama()) {
-            return $this->ollama->generateEmbedding($text) ?? $this->gemini->generateEmbedding($text);
+            $embedding = $this->ollama->generateEmbedding($text);
+
+            return $embedding ?? ($this->cloudFallbackEnabled() && $this->cloudProcessingAllowed($user)
+                ? $this->gemini->generateEmbedding($text)
+                : null);
         }
 
-        return $this->gemini->generateEmbedding($text);
+        return $this->cloudProcessingAllowed($user)
+            ? $this->gemini->generateEmbedding($text)
+            : null;
     }
 
     public function interpretWhatsApp(string $message, array $context = []): ?array
@@ -64,5 +88,19 @@ class AIManager
     private function usesOllama(): bool
     {
         return config('ai.provider', 'ollama') === 'ollama';
+    }
+
+    private function cloudFallbackEnabled(): bool
+    {
+        return (bool) config('ai.cloud_fallback_enabled', false);
+    }
+
+    private function cloudProcessingAllowed(?User $user): bool
+    {
+        if (! config('ai.cloud_requires_user_consent', true)) {
+            return true;
+        }
+
+        return $user?->allowsCloudAI() ?? false;
     }
 }

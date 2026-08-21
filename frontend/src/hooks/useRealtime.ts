@@ -18,10 +18,10 @@ export function useRealtime({
   onTaskDeleted,
   onBriefingGenerated,
 }: RealtimeCallbacks = {}) {
-  const { user, token } = useAuth();
+  const { isAuthenticated, user } = useAuth();
 
   useEffect(() => {
-    if (!token || !user?.id) return;
+    if (!isAuthenticated || !user?.id) return;
 
     const channelName = `App.Models.User.${user.id}`;
     
@@ -66,5 +66,5 @@ export function useRealtime({
       console.log(`Unsubscribing from private channel: ${channelName}`);
       echo.leave(channelName);
     };
-  }, [user?.id, token, onTaskCreated, onTaskUpdated, onTaskDeleted, onBriefingGenerated]);
+  }, [isAuthenticated, user?.id, onTaskCreated, onTaskUpdated, onTaskDeleted, onBriefingGenerated]);
 }

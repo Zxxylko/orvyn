@@ -32,6 +32,11 @@ class WhatsAppIntegrationTest extends TestCase
     public function test_user_can_enable_whatsapp_with_explicit_consent(): void
     {
         $user = User::factory()->create();
+        WhatsAppConnection::create([
+            'user_id' => $user->id,
+            'phone_number' => '+6281234567890',
+            'phone_verified_at' => now(),
+        ]);
         Sanctum::actingAs($user);
 
         $this->patchJson('/api/v1/integrations/whatsapp', [
@@ -101,10 +106,14 @@ class WhatsAppIntegrationTest extends TestCase
     public function test_whatsapp_cannot_be_enabled_without_consent(): void
     {
         $user = User::factory()->create();
+        WhatsAppConnection::create([
+            'user_id' => $user->id,
+            'phone_number' => '+6281234567890',
+            'phone_verified_at' => now(),
+        ]);
         Sanctum::actingAs($user);
 
         $this->patchJson('/api/v1/integrations/whatsapp', [
-            'phone_number' => '081234567890',
             'enabled' => true,
         ])->assertUnprocessable()->assertJsonValidationErrors('consent');
     }
@@ -117,6 +126,7 @@ class WhatsAppIntegrationTest extends TestCase
             'user_id' => $user->id,
             'phone_number' => '+6281234567890',
             'enabled' => true,
+            'phone_verified_at' => now(),
             'consent_at' => now(),
         ]);
         Sanctum::actingAs($user);
@@ -145,6 +155,7 @@ class WhatsAppIntegrationTest extends TestCase
             'user_id' => $user->id,
             'phone_number' => '+6281234567890',
             'enabled' => true,
+            'phone_verified_at' => now(),
             'consent_at' => now(),
             'features' => WhatsAppConnection::defaultFeatures(),
         ]);
@@ -155,11 +166,13 @@ class WhatsAppIntegrationTest extends TestCase
             'message' => 'tambah tugas laporan keamanan besok',
             'received_at' => now()->toIso8601String(),
         ], JSON_UNESCAPED_SLASHES);
-        $signature = hash_hmac('sha256', $body, config('whatsapp.webhook_secret'));
+        $timestamp = (string) now()->timestamp;
+        $signature = hash_hmac('sha256', $timestamp.'.'.$body, config('whatsapp.webhook_secret'));
 
         $this->call('POST', '/api/v1/integrations/whatsapp/inbound', [], [], [], [
             'CONTENT_TYPE' => 'application/json',
             'HTTP_X_ORVYN_SIGNATURE' => $signature,
+            'HTTP_X_ORVYN_TIMESTAMP' => $timestamp,
         ], $body)
             ->assertOk()
             ->assertJsonPath('duplicate', null);
@@ -172,6 +185,7 @@ class WhatsAppIntegrationTest extends TestCase
         $this->call('POST', '/api/v1/integrations/whatsapp/inbound', [], [], [], [
             'CONTENT_TYPE' => 'application/json',
             'HTTP_X_ORVYN_SIGNATURE' => $signature,
+            'HTTP_X_ORVYN_TIMESTAMP' => $timestamp,
         ], $body)->assertOk()->assertJsonPath('duplicate', true);
 
         $this->assertSame(1, Task::where('user_id', $user->id)->count());
@@ -201,6 +215,7 @@ class WhatsAppIntegrationTest extends TestCase
             'user_id' => $user->id,
             'phone_number' => '+6281234567890',
             'enabled' => true,
+            'phone_verified_at' => now(),
             'consent_at' => now(),
             'timezone' => 'UTC',
             'daily_briefing_time' => '00:00',
@@ -222,6 +237,7 @@ class WhatsAppIntegrationTest extends TestCase
             'user_id' => $user->id,
             'phone_number' => '+6281234567890',
             'enabled' => true,
+            'phone_verified_at' => now(),
             'consent_at' => now(),
             'timezone' => 'UTC',
             'daily_briefing_time' => '07:00',
@@ -251,6 +267,7 @@ class WhatsAppIntegrationTest extends TestCase
             'user_id' => $user->id,
             'phone_number' => '+6281234567890',
             'enabled' => true,
+            'phone_verified_at' => now(),
             'consent_at' => now(),
             'timezone' => 'UTC',
             'features' => WhatsAppConnection::defaultFeatures(),
@@ -294,6 +311,7 @@ class WhatsAppIntegrationTest extends TestCase
             'user_id' => $user->id,
             'phone_number' => '+6281234567890',
             'enabled' => true,
+            'phone_verified_at' => now(),
             'consent_at' => now(),
         ]);
 

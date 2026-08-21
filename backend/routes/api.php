@@ -2,14 +2,17 @@
 
 use App\Http\Controllers\Api\AcademicTaskController;
 use App\Http\Controllers\Api\AnalyticsController;
+use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BriefingController;
 use App\Http\Controllers\Api\CampusScheduleController;
 use App\Http\Controllers\Api\DemoAuthController;
 use App\Http\Controllers\Api\HabitController;
 use App\Http\Controllers\Api\HealthLogController;
 use App\Http\Controllers\Api\LivingExpenseController;
+use App\Http\Controllers\Api\PushNotificationController;
 use App\Http\Controllers\Api\TaskController;
 use App\Http\Controllers\Api\TimeBlockController;
+use App\Http\Controllers\Api\UserDataController;
 use App\Http\Controllers\Api\WhatsAppConnectionController;
 use App\Http\Controllers\Api\WhatsAppWebhookController;
 use App\Http\Middleware\RequireOrvynAbility;
@@ -18,10 +21,13 @@ use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
     // Public routes
-    // Route::post('/auth/firebase', [AuthController::class, 'syncFirebaseUser']);
+    Route::post('/auth/firebase', [AuthController::class, 'firebaseLogin'])->middleware('throttle:10,1');
     Route::post('/auth/demo-login', [DemoAuthController::class, 'login'])->middleware('throttle:10,1');
     Route::post('/integrations/whatsapp/inbound', [WhatsAppWebhookController::class, 'inbound'])
         ->middleware('throttle:120,1');
+
+    Route::post('/auth/logout', [AuthController::class, 'logout'])
+        ->middleware(['auth:sanctum', 'throttle:120,1']);
 
     // Protected routes (Sanctum auth for now, Firebase later)
     Route::middleware(['auth:sanctum', RequireOrvynAbility::class, 'throttle:120,1'])->group(function () {
@@ -32,13 +38,25 @@ Route::prefix('v1')->group(function () {
         Route::get('/user/me', function (Request $request) {
             return response()->json(['data' => $request->user()]);
         });
+        Route::get('/user/export', [UserDataController::class, 'export'])
+            ->middleware('throttle:6,1,user-export:');
+        Route::patch('/user/privacy-preferences', [UserDataController::class, 'updatePrivacyPreferences'])
+            ->middleware('throttle:12,1,user-privacy:');
+        Route::delete('/user', [UserDataController::class, 'destroy'])
+            ->middleware('throttle:3,1,user-delete:');
+
+        // Authentication sessions
+        Route::get('/auth/sessions', [AuthController::class, 'sessions']);
+        Route::delete('/auth/sessions/{id}', [AuthController::class, 'revokeSession'])->whereNumber('id');
+        Route::post('/auth/logout-all', [AuthController::class, 'logoutAll']);
 
         // Tasks
         Route::apiResource('tasks', TaskController::class);
         Route::post('tasks/smart-parse', [TaskController::class, 'smartParse'])->middleware('throttle:20,1');
 
         // Time Blocks
-        Route::apiResource('time-blocks', TimeBlockController::class);
+        Route::apiResource('time-blocks', TimeBlockController::class)
+            ->parameters(['time-blocks' => 'timeBlock']);
         Route::post('time-blocks/optimize', [TimeBlockController::class, 'optimize'])->middleware('throttle:12,1');
 
         // Briefing
@@ -61,22 +79,40 @@ Route::prefix('v1')->group(function () {
         Route::delete('habits/{habit}/check-ins', [HabitController::class, 'uncheck']);
 
         // Campus Life Planner
-        Route::apiResource('campus-schedules', CampusScheduleController::class)->except(['show']);
+        Route::apiResource('campus-schedules', CampusScheduleController::class)
+            ->parameters(['campus-schedules' => 'campusSchedule'])
+            ->except(['show']);
 
         // Tel-U Modules Integration
-        Route::apiResource('academic-tasks', AcademicTaskController::class);
+        Route::apiResource('academic-tasks', AcademicTaskController::class)
+            ->parameters(['academic-tasks' => 'academicTask']);
         Route::get('finance/summary', [LivingExpenseController::class, 'summary']);
         Route::patch('finance/budget', [LivingExpenseController::class, 'updateBudget']);
         Route::apiResource('finance/expenses', LivingExpenseController::class);
         Route::get('health/snapshot', [HealthLogController::class, 'snapshot']);
-        Route::apiResource('health/logs', HealthLogController::class);
+        Route::apiResource('health/logs', HealthLogController::class)
+            ->parameters(['logs' => 'healthLog']);
 
         // WhatsApp assistant & notification preferences
         Route::get('integrations/whatsapp', [WhatsAppConnectionController::class, 'show']);
         Route::patch('integrations/whatsapp', [WhatsAppConnectionController::class, 'update']);
         Route::post('integrations/whatsapp/connect', [WhatsAppConnectionController::class, 'connect'])
             ->middleware('throttle:6,1,whatsapp-connect:');
+        Route::post('integrations/whatsapp/verification/request', [WhatsAppConnectionController::class, 'requestVerification'])
+            ->middleware('throttle:3,10,whatsapp-verification-request:');
+        Route::post('integrations/whatsapp/verification/confirm', [WhatsAppConnectionController::class, 'confirmVerification'])
+            ->middleware('throttle:8,10,whatsapp-verification-confirm:');
         Route::post('integrations/whatsapp/test', [WhatsAppConnectionController::class, 'test'])
             ->middleware('throttle:6,1,whatsapp-test:');
+
+        // Native mobile push notifications
+        Route::get('push-notifications', [PushNotificationController::class, 'show']);
+        Route::patch('push-notifications', [PushNotificationController::class, 'update']);
+        Route::post('push-notifications/test', [PushNotificationController::class, 'test'])
+            ->middleware('throttle:6,1,push-test:');
+        Route::post('push-tokens', [PushNotificationController::class, 'register'])
+            ->middleware('throttle:12,1,push-register:');
+        Route::delete('push-tokens/current', [PushNotificationController::class, 'unregister'])
+            ->middleware('throttle:12,1,push-unregister:');
     });
 });

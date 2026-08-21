@@ -1,8 +1,9 @@
 import 'dotenv/config';
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { mkdir } from 'node:fs/promises';
+import { chmod, lstat, mkdir, readdir } from 'node:fs/promises';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import makeWASocket, {
+  areJidsSameUser,
   Browsers,
   DisconnectReason,
   fetchLatestBaileysVersion,
@@ -14,6 +15,8 @@ import pino from 'pino';
 import QRCode from 'qrcode';
 import { z } from 'zod';
 
+process.umask(0o077);
+
 const env = {
   port: Number(process.env.PORT ?? 3100),
   host: process.env.HOST ?? '127.0.0.1',
@@ -24,11 +27,39 @@ const env = {
   autoConnect: (process.env.WHATSAPP_AUTO_CONNECT ?? 'true') === 'true',
 };
 
-if (env.serviceToken.length < 16 || env.webhookSecret.length < 16) {
-  throw new Error('WHATSAPP_SERVICE_TOKEN and WHATSAPP_WEBHOOK_SECRET must contain at least 16 characters.');
+if (env.serviceToken.length < 32 || env.webhookSecret.length < 32) {
+  throw new Error('WHATSAPP_SERVICE_TOKEN and WHATSAPP_WEBHOOK_SECRET must contain at least 32 characters.');
 }
 
-const logger = pino({ level: process.env.LOG_LEVEL ?? 'info' });
+function redactDiagnostic(value: unknown): string {
+  const message = value instanceof Error ? `${value.name}: ${value.message}` : String(value);
+  if (/(SessionEntry|baseKey|chainKey|rootKey|ephemeralKey|privateKey|<Buffer)/i.test(message)) {
+    return '[redacted cryptographic diagnostic]';
+  }
+
+  return message.replace(/(Bearer\s+)[^\s]+/gi, '$1[redacted]').slice(0, 2_000);
+}
+
+for (const method of ['log', 'warn', 'error'] as const) {
+  const original = console[method].bind(console);
+  console[method] = (...args: unknown[]) => original(...args.map(redactDiagnostic));
+}
+
+function errorSummary(error: unknown): { type: string; message: string } {
+  return {
+    type: error instanceof Error ? error.name : 'UnknownError',
+    message: redactDiagnostic(error),
+  };
+}
+
+const logger = pino({
+  level: process.env.LOG_LEVEL ?? 'info',
+  redact: {
+    paths: ['*.token', '*.secret', '*.key', '*.phone', '*.connectedPhone'],
+    censor: '[redacted]',
+  },
+});
+const baileysLogger = pino({ level: process.env.BAILEYS_LOG_LEVEL ?? 'silent' });
 const app = express();
 app.use(express.json({ limit: '64kb' }));
 
@@ -70,23 +101,65 @@ function extractText(message: WAMessage): string | null {
     ?? null;
 }
 
+function isConnectedAccountChat(remoteJid: string): boolean {
+  const account = socket?.user;
+  return [account?.id, account?.phoneNumber, account?.lid]
+    .some((jid) => jid ? areJidsSameUser(jid, remoteJid) : false);
+}
+
+async function hardenSessionPath(path: string): Promise<void> {
+  await mkdir(path, { recursive: true, mode: 0o700 });
+  const metadata = await lstat(path);
+  if (metadata.isSymbolicLink() || !metadata.isDirectory()) {
+    throw new Error('WHATSAPP_SESSION_PATH must be a real directory.');
+  }
+  await chmod(path, 0o700);
+
+  for (const entry of await readdir(path, { withFileTypes: true })) {
+    const child = `${path}/${entry.name}`;
+    if (entry.isSymbolicLink()) {
+      throw new Error('Symbolic links are not allowed in WHATSAPP_SESSION_PATH.');
+    }
+    if (entry.isDirectory()) {
+      await hardenSessionPath(child);
+    } else if (entry.isFile()) {
+      await chmod(child, 0o600);
+    }
+  }
+}
+
 async function forwardInbound(message: WAMessage): Promise<void> {
   const remoteJid = message.key.remoteJid;
   const text = extractText(message)?.trim();
-  if (!remoteJid || !text || message.key.fromMe || remoteJid.endsWith('@g.us') || remoteJid === 'status@broadcast') return;
+  if (
+    !remoteJid
+    || !text
+    || remoteJid.endsWith('@g.us')
+    || remoteJid.endsWith('@newsletter')
+    || remoteJid.endsWith('@broadcast')
+    || (message.key.fromMe && !isConnectedAccountChat(remoteJid))
+  ) return;
 
+  const senderJid = message.key.remoteJidAlt?.endsWith('@s.whatsapp.net')
+    ? message.key.remoteJidAlt
+    : remoteJid;
   const body = JSON.stringify({
     message_id: message.key.id,
-    phone: `+${remoteJid.split('@')[0]}`,
+    phone: `+${senderJid.split('@')[0]}`,
     message: text,
     received_at: new Date(Number(message.messageTimestamp ?? Date.now() / 1000) * 1000).toISOString(),
   });
-  const signature = createHmac('sha256', env.webhookSecret).update(body).digest('hex');
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const signature = createHmac('sha256', env.webhookSecret).update(`${timestamp}.${body}`).digest('hex');
 
   try {
     const response = await fetch(`${env.apiUrl}/api/v1/integrations/whatsapp/inbound`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-orvyn-signature': signature },
+      headers: {
+        'content-type': 'application/json',
+        'x-orvyn-signature': signature,
+        'x-orvyn-timestamp': timestamp,
+      },
       body,
       signal: AbortSignal.timeout(90_000),
     });
@@ -99,7 +172,7 @@ async function forwardInbound(message: WAMessage): Promise<void> {
       await socket.sendMessage(remoteJid, { text: result.reply });
     }
   } catch (error) {
-    logger.error({ error }, 'Failed to forward inbound WhatsApp message');
+    logger.error({ error: errorSummary(error) }, 'Failed to forward inbound WhatsApp message');
   }
 }
 
@@ -109,17 +182,20 @@ async function connect(): Promise<void> {
 
   connecting = (async () => {
     sessionStatus = 'connecting';
-    await mkdir(env.sessionPath, { recursive: true });
+    await hardenSessionPath(env.sessionPath);
     const { state, saveCreds } = await useMultiFileAuthState(env.sessionPath);
     const { version } = await fetchLatestBaileysVersion();
     const nextSocket = makeWASocket({
       version,
       auth: state,
       browser: Browsers.ubuntu('ORVYN'),
-      logger: logger.child({ module: 'baileys' }),
+      logger: baileysLogger.child({ module: 'baileys' }),
       printQRInTerminal: false,
+      emitOwnEvents: false,
       markOnlineOnConnect: false,
+      maxMsgRetryCount: 1,
       syncFullHistory: false,
+      shouldIgnoreJid: (jid) => jid.endsWith('@newsletter') || jid.endsWith('@broadcast'),
       generateHighQualityLinkPreview: false,
     });
     socket = nextSocket;
@@ -136,8 +212,8 @@ async function connect(): Promise<void> {
       if (connection === 'open') {
         sessionStatus = 'connected';
         qrDataUrl = null;
-        connectedPhone = nextSocket.user?.id?.split(':')[0] ?? null;
-        logger.info({ connectedPhone }, 'WhatsApp session connected');
+        connectedPhone = (nextSocket.user?.phoneNumber ?? nextSocket.user?.id)?.split(':')[0] ?? null;
+        logger.info('WhatsApp session connected');
       }
       if (connection === 'close') {
         socket = null;
@@ -155,8 +231,10 @@ async function connect(): Promise<void> {
   return connecting;
 }
 
+app.disable('x-powered-by');
+
 app.get('/health', (_request, response) => {
-  response.json({ online: true, connected: sessionStatus === 'connected', status: sessionStatus });
+  response.json({ online: true });
 });
 
 app.get('/session', requireAuth, (_request, response) => {
@@ -188,13 +266,13 @@ app.post('/messages', requireAuth, async (request, response) => {
 });
 
 app.use((error: unknown, _request: Request, response: Response, _next: NextFunction) => {
-  logger.error({ error }, 'WhatsApp service request failed');
-  response.status(500).json({ message: error instanceof Error ? error.message : 'Internal service error' });
+  logger.error({ error: errorSummary(error) }, 'WhatsApp service request failed');
+  response.status(500).json({ message: 'Internal service error' });
 });
 
 app.listen(env.port, env.host, () => {
   logger.info({ host: env.host, port: env.port }, 'ORVYN WhatsApp service listening');
   if (env.autoConnect) {
-    void connect().catch((error) => logger.error({ error }, 'Initial WhatsApp connection failed'));
+    void connect().catch((error) => logger.error({ error: errorSummary(error) }, 'Initial WhatsApp connection failed'));
   }
 });

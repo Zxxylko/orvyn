@@ -2,28 +2,29 @@
 
 namespace Tests\Unit;
 
-use Tests\TestCase;
-use App\Models\User;
+use App\Models\FocusLog;
 use App\Models\Task;
 use App\Models\TimeBlock;
-use App\Models\FocusLog;
-use App\Models\StudentProfile;
+use App\Models\User;
 use App\Services\AnalyticsService;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Carbon\Carbon;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
+use Tests\TestCase;
 
 class AnalyticsServiceTest extends TestCase
 {
     use RefreshDatabase;
 
     private AnalyticsService $analyticsService;
+
     private User $user;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->analyticsService = new AnalyticsService();
-        
+        $this->analyticsService = new AnalyticsService;
+
         // Create user
         $this->user = User::factory()->create();
     }
@@ -58,21 +59,21 @@ class AnalyticsServiceTest extends TestCase
     public function test_update_hcf_uses_moving_average_and_clamps(): void
     {
         $profile = $this->user->getOrCreateProfile();
-        
+
         // Initial HCF is 1.0
         $this->assertEquals(1.0, $profile->coding_hcf);
 
         // First task: estimated 60m, actual took 90m (ratio 1.5)
         // EMA: 1.0 * 0.8 + 1.5 * 0.2 = 0.8 + 0.3 = 1.1
         $this->analyticsService->updateHcf($this->user, 'coding', 60, 90);
-        
+
         $profile->refresh();
         $this->assertEquals(1.1, $profile->coding_hcf);
 
         // Test boundary clamping (HCF should never exceed 3.0)
         $profile->update(['coding_hcf' => 2.9]);
         $this->analyticsService->updateHcf($this->user, 'coding', 30, 150); // ratio 5.0
-        
+
         $profile->refresh();
         $this->assertEquals(3.0, $profile->coding_hcf); // Clamped at 3.0
     }
@@ -89,7 +90,7 @@ class AnalyticsServiceTest extends TestCase
         // 30 minutes of break (Break Ratio = 25%, above 20% baseline)
         // 0 overdue tasks, no late-night hours
         $task1 = Task::create([
-            'id' => \Illuminate\Support\Str::uuid(),
+            'id' => Str::uuid(),
             'user_id' => $this->user->id,
             'title' => 'Healthy Task 1',
             'difficulty' => 3,
@@ -100,7 +101,7 @@ class AnalyticsServiceTest extends TestCase
         ]);
 
         TimeBlock::create([
-            'id' => \Illuminate\Support\Str::uuid(),
+            'id' => Str::uuid(),
             'user_id' => $this->user->id,
             'label' => 'Healthy Task 1 Block',
             'start_time' => Carbon::parse("$today 09:00:00"),
@@ -109,7 +110,7 @@ class AnalyticsServiceTest extends TestCase
             'task_id' => $task1->id,
         ]);
         TimeBlock::create([
-            'id' => \Illuminate\Support\Str::uuid(),
+            'id' => Str::uuid(),
             'user_id' => $this->user->id,
             'label' => 'Short Recharge Break',
             'start_time' => Carbon::parse("$today 11:00:00"),
@@ -125,7 +126,7 @@ class AnalyticsServiceTest extends TestCase
         // Add 5 overdue tasks
         for ($i = 0; $i < 5; $i++) {
             Task::create([
-                'id' => \Illuminate\Support\Str::uuid(),
+                'id' => Str::uuid(),
                 'user_id' => $this->user->id,
                 'title' => "Overdue Task $i",
                 'status' => 'pending',
@@ -139,7 +140,7 @@ class AnalyticsServiceTest extends TestCase
 
         // Add 4 hours of late-night study (difficulty 5)
         $task2 = Task::create([
-            'id' => \Illuminate\Support\Str::uuid(),
+            'id' => Str::uuid(),
             'user_id' => $this->user->id,
             'title' => 'Late Night Coding Session',
             'difficulty' => 5,
@@ -150,7 +151,7 @@ class AnalyticsServiceTest extends TestCase
         ]);
 
         TimeBlock::create([
-            'id' => \Illuminate\Support\Str::uuid(),
+            'id' => Str::uuid(),
             'user_id' => $this->user->id,
             'label' => 'Late Night Session Block',
             'start_time' => Carbon::parse("$today 23:00:00"),
@@ -203,7 +204,7 @@ class AnalyticsServiceTest extends TestCase
     public function test_streak_increases_on_consecutive_activity(): void
     {
         $profile = $this->user->getOrCreateProfile();
-        
+
         // Day 1
         $profile->update([
             'current_streak' => 1,
@@ -212,7 +213,7 @@ class AnalyticsServiceTest extends TestCase
 
         // Simulate activity today
         $this->analyticsService->updateStreak($this->user);
-        
+
         $profile->refresh();
         $this->assertEquals(2, $profile->current_streak);
         $this->assertEquals(2, $profile->longest_streak);
@@ -242,7 +243,7 @@ class AnalyticsServiceTest extends TestCase
         }
 
         $analysis = $this->analyticsService->analyzePeakHours($this->user);
-        
+
         $this->assertEquals('night_owl', $analysis['chronotype']);
         $this->assertContains(20, $analysis['peak_hours']);
 

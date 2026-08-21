@@ -41,6 +41,8 @@ interface WhatsAppSettings {
   reminder_schedule: ReminderSchedule;
   features: Record<string, boolean>;
   consented: boolean;
+  verified: boolean;
+  verification_expires_at: string | null;
   last_inbound_at: string | null;
   last_outbound_at: string | null;
 }
@@ -134,6 +136,8 @@ const EMPTY_SETTINGS: WhatsAppSettings = {
   reminder_schedule: DEFAULT_REMINDER_SCHEDULE,
   features: Object.fromEntries(FEATURES.map(({ key }) => [key, true])),
   consented: false,
+  verified: false,
+  verification_expires_at: null,
   last_inbound_at: null,
   last_outbound_at: null,
 };
@@ -143,6 +147,8 @@ function normalizeSettings(incoming: Partial<WhatsAppSettings>): WhatsAppSetting
   return {
     ...EMPTY_SETTINGS,
     ...incoming,
+    verified: Boolean(incoming.verified),
+    verification_expires_at: incoming.verification_expires_at ?? null,
     reminder_schedule: {
       ...DEFAULT_REMINDER_SCHEDULE,
       ...incomingSchedule,
@@ -161,6 +167,10 @@ export function WhatsAppSettingsDialog({ open, onOpenChange }: WhatsAppSettingsD
   const [saving, setSaving] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [verificationCode, setVerificationCode] = useState('');
+  const [verificationRequested, setVerificationRequested] = useState(false);
+  const [requestingVerification, setRequestingVerification] = useState(false);
+  const [confirmingVerification, setConfirmingVerification] = useState(false);
 
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
@@ -173,6 +183,8 @@ export function WhatsAppSettingsDialog({ open, onOpenChange }: WhatsAppSettingsD
         setData(next);
         setSettings(normalizeSettings(next.settings));
         setConsent(next.settings.consented);
+        setVerificationCode('');
+        setVerificationRequested(false);
       }
     } catch (error) {
       if (!quiet) toast.error(getApiErrorMessage(error, 'Gagal memuat pengaturan WhatsApp.'));
@@ -223,7 +235,75 @@ export function WhatsAppSettingsDialog({ open, onOpenChange }: WhatsAppSettingsD
     updateSchedule('deadline_lead_minutes', next.sort((first, second) => second - first));
   };
 
+  const updatePhoneNumber = (value: string) => {
+    setVerificationCode('');
+    setVerificationRequested(false);
+    setSettings((current) => {
+      const changed = value !== (current.phone_number ?? '');
+      return {
+        ...current,
+        phone_number: value,
+        verified: changed ? false : current.verified,
+        verification_expires_at: changed ? null : current.verification_expires_at,
+        enabled: changed ? false : current.enabled,
+      };
+    });
+  };
+
+  const requestVerification = async () => {
+    const phone = settings.phone_number?.trim() || '';
+    if (!phone || phone.length < 8) {
+      toast.error('Masukkan nomor WhatsApp yang valid terlebih dahulu.');
+      return;
+    }
+
+    setRequestingVerification(true);
+    try {
+      await whatsappApi.requestVerification({ phone_number: phone });
+      setVerificationRequested(true);
+      setVerificationCode('');
+      toast.success('Kode verifikasi 6 digit telah dikirim ke WhatsApp kamu.');
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, 'Gagal mengirim kode verifikasi. Pastikan WhatsApp terhubung.'));
+    } finally {
+      setRequestingVerification(false);
+    }
+  };
+
+  const confirmVerification = async () => {
+    if (!/^\d{6}$/.test(verificationCode)) {
+      toast.error('Masukkan 6 digit kode verifikasi.');
+      return;
+    }
+
+    setConfirmingVerification(true);
+    try {
+      const response = await whatsappApi.confirmVerification({ code: verificationCode });
+      const updatedSettings = normalizeSettings(response.data.data.settings as WhatsAppSettings);
+      setSettings(updatedSettings);
+      setVerificationRequested(false);
+      setVerificationCode('');
+      toast.success('Nomor WhatsApp berhasil diverifikasi!');
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, 'Kode verifikasi salah atau kedaluwarsa.'));
+    } finally {
+      setConfirmingVerification(false);
+    }
+  };
+
+  const toggleEnabled = () => {
+    if (!settings.enabled && !settings.verified) {
+      toast.error('Verifikasi nomor WhatsApp terlebih dahulu sebelum mengaktifkan.');
+      return;
+    }
+    setSettings((current) => ({ ...current, enabled: !current.enabled }));
+  };
+
   const save = async () => {
+    if (settings.enabled && !settings.verified) {
+      toast.error('Verifikasi nomor WhatsApp terlebih dahulu sebelum mengaktifkan notifikasi.');
+      return;
+    }
     if (settings.enabled && !consent) {
       toast.error('Berikan persetujuan sebelum mengaktifkan pesan WhatsApp.');
       return;
@@ -322,14 +402,72 @@ export function WhatsAppSettingsDialog({ open, onOpenChange }: WhatsAppSettingsD
             )}
 
             <section className="grid gap-4 rounded-2xl border border-white/10 bg-white/[0.035] p-4 sm:grid-cols-2 sm:p-5">
-              <Field label="Nomor WhatsApp" hint="Gunakan format Indonesia atau internasional.">
-                <input
-                  value={settings.phone_number ?? ''}
-                  onChange={(event) => setSettings((current) => ({ ...current, phone_number: event.target.value }))}
-                  placeholder="0812 3456 7890"
-                  className="focus-ring h-10 w-full rounded-xl border border-white/10 bg-black/20 px-3 text-sm text-white outline-none placeholder:text-slate-600"
-                />
+              <Field
+                label="Nomor WhatsApp"
+                hint={settings.verified ? 'Nomor sudah terverifikasi dan siap menerima pesan.' : 'Verifikasi nomor dengan kode OTP via WhatsApp.'}
+                badge={
+                  settings.verified ? (
+                    <span className="inline-flex items-center gap-1 rounded-md border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-bold text-emerald-300">
+                      <CheckCircle2 className="h-3 w-3" /> Terverifikasi
+                    </span>
+                  ) : settings.phone_number?.trim() ? (
+                    <span className="inline-flex items-center gap-1 rounded-md border border-amber-400/30 bg-amber-400/10 px-2 py-0.5 text-[10px] font-bold text-amber-300">
+                      Belum terverifikasi
+                    </span>
+                  ) : null
+                }
+              >
+                <div className="space-y-2">
+                  <input
+                    value={settings.phone_number ?? ''}
+                    onChange={(event) => updatePhoneNumber(event.target.value)}
+                    placeholder="0812 3456 7890"
+                    className="focus-ring h-10 w-full rounded-xl border border-white/10 bg-black/20 px-3 text-sm text-white outline-none placeholder:text-slate-600"
+                  />
+
+                  {!settings.verified && settings.phone_number?.trim() && (
+                    <div className="space-y-2 pt-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={requestVerification}
+                          disabled={requestingVerification || !data?.service.connected}
+                          className="focus-ring inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-cyan-400/30 bg-cyan-400/10 px-3 text-xs font-bold text-cyan-300 transition hover:bg-cyan-400/20 disabled:opacity-40"
+                        >
+                          {requestingVerification ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                          {verificationRequested ? 'Kirim ulang OTP' : 'Kirim kode verifikasi OTP'}
+                        </button>
+                        {!data?.service.connected && (
+                          <span className="text-[10px] text-amber-400/80">Hubungkan WhatsApp terlebih dahulu</span>
+                        )}
+                      </div>
+
+                      {verificationRequested && (
+                        <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/30 p-2">
+                          <input
+                            type="text"
+                            maxLength={6}
+                            value={verificationCode}
+                            onChange={(event) => setVerificationCode(event.target.value.replace(/\D/g, ''))}
+                            placeholder="6 digit kode"
+                            className="focus-ring h-8 w-28 rounded-lg border border-white/15 bg-slate-900 px-2 text-center font-mono text-xs tracking-widest text-white outline-none placeholder:font-sans placeholder:text-slate-600"
+                          />
+                          <button
+                            type="button"
+                            onClick={confirmVerification}
+                            disabled={confirmingVerification || verificationCode.length !== 6}
+                            className="focus-ring inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-emerald-400 px-3 text-xs font-bold text-slate-950 transition hover:bg-emerald-300 disabled:opacity-40"
+                          >
+                            {confirmingVerification ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                            Konfirmasi
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </Field>
+
               <Field label="Timezone" hint="Menentukan waktu briefing dan deadline.">
                 <select
                   value={settings.timezone}
@@ -597,12 +735,15 @@ function TimeInput({ label, value, onChange, compact = false }: { label: string;
   );
 }
 
-function Field({ label, hint, children }: { label: string; hint: string; children: React.ReactNode }) {
+function Field({ label, hint, badge, children }: { label: string; hint: string; badge?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <label className="space-y-2">
-      <span className="block text-xs font-bold text-slate-200">{label}</span>
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="block text-xs font-bold text-slate-200">{label}</span>
+        {badge}
+      </div>
       {children}
       <span className="block text-[10px] leading-relaxed text-slate-600">{hint}</span>
-    </label>
+    </div>
   );
 }

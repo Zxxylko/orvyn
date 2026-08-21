@@ -1,8 +1,10 @@
 import { lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import type { ComponentType, LazyExoticComponent } from 'react';
+import { Route, Switch, useLocation } from 'wouter';
 import { MotionConfig } from 'framer-motion';
 import { Toaster } from 'sonner';
 import { AuthProvider } from './contexts/AuthContext';
+import { Navigate } from './lib/router';
 
 const LoginPage = lazy(() => import('./pages/LoginPage').then((module) => ({ default: module.LoginPage })));
 const DashboardPage = lazy(() => import('./pages/DashboardPage').then((module) => ({ default: module.DashboardPage })));
@@ -15,6 +17,17 @@ const CampusPage = lazy(() => import('./pages/CampusPage').then((module) => ({ d
 const StudentHubPage = lazy(() => import('./pages/StudentHubPage').then((module) => ({ default: module.StudentHubPage })));
 const AppShell = lazy(() => import('./components/layout/AppShell').then((module) => ({ default: module.AppShell })));
 
+const protectedPages: Record<string, LazyExoticComponent<ComponentType>> = {
+  '/dashboard': DashboardPage,
+  '/student-hub': StudentHubPage,
+  '/calendar': CalendarPage,
+  '/briefing': BriefingPage,
+  '/academic': AcademicPage,
+  '/campus': CampusPage,
+  '/finance': FinancePage,
+  '/health': HealthPage,
+};
+
 function PageLoader() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-slate-950 text-white" role="status" aria-label="Memuat halaman">
@@ -26,11 +39,25 @@ function PageLoader() {
   );
 }
 
+function ProtectedApp() {
+  const [pathname] = useLocation();
+  const Page = protectedPages[pathname];
+
+  if (!Page) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return (
+    <AppShell>
+      <Page />
+    </AppShell>
+  );
+}
+
 function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <MotionConfig reducedMotion="user">
+      <MotionConfig reducedMotion="user">
         <Toaster 
           position="top-right" 
           theme="dark"
@@ -45,26 +72,16 @@ function App() {
         />
         
         <Suspense fallback={<PageLoader />}>
-        <Routes>
-          <Route path="/" element={<LoginPage />} />
-          
-          {/* Protected App Routes wrapped in the AppShell Layout */}
-          <Route element={<AppShell />}>
-            <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/student-hub" element={<StudentHubPage />} />
-            <Route path="/calendar" element={<CalendarPage />} />
-            <Route path="/briefing" element={<BriefingPage />} />
-            <Route path="/academic" element={<AcademicPage />} />
-            <Route path="/campus" element={<CampusPage />} />
-            <Route path="/finance" element={<FinancePage />} />
-            <Route path="/health" element={<HealthPage />} />
-          </Route>
-          
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
-        </Routes>
+          <Switch>
+            <Route path="/">
+              <LoginPage />
+            </Route>
+            <Route>
+              <ProtectedApp />
+            </Route>
+          </Switch>
         </Suspense>
-        </MotionConfig>
-      </BrowserRouter>
+      </MotionConfig>
     </AuthProvider>
   );
 }

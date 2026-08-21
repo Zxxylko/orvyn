@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Laravel\Horizon\Horizon;
 use Laravel\Horizon\HorizonApplicationServiceProvider;
@@ -28,9 +29,24 @@ class HorizonServiceProvider extends HorizonApplicationServiceProvider
     protected function gate(): void
     {
         Gate::define('viewHorizon', function ($user = null) {
-            return in_array(optional($user)->email, [
-                //
-            ]);
+            return $user && in_array($user->email, config('horizon.admin_emails', []), true);
+        });
+    }
+
+    /**
+     * Never bypass authorization merely because APP_ENV is local. A local
+     * server may still be reachable from an untrusted Wi-Fi network.
+     */
+    protected function authorization(): void
+    {
+        $this->gate();
+
+        Horizon::auth(function (Request $request): bool {
+            if (! config('horizon.dashboard_enabled', false)) {
+                return false;
+            }
+
+            return Gate::check('viewHorizon', [$request->user()]);
         });
     }
 }

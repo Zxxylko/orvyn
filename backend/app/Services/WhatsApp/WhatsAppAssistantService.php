@@ -99,7 +99,7 @@ class WhatsAppAssistantService
         }
 
         $clean = preg_replace('/^(?:tambah|buat|catat)(?:kan)?\s+(?:tugas\s+)?/iu', '', $message) ?: $message;
-        $parsed = $this->ai->parseTask($clean);
+        $parsed = $this->ai->parseTask($clean, $user);
         $task = $user->tasks()->create($parsed);
         GenerateEmbeddingJob::dispatch($task);
 

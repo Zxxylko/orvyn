@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Services\AI\GeminiService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Tests\TestCase;
 
 class GeminiServiceTest extends TestCase
@@ -45,7 +46,7 @@ class GeminiServiceTest extends TestCase
         ]);
 
         $user = User::factory()->create();
-        $service = new GeminiService();
+        $service = new GeminiService;
 
         $briefing = $service->generateBriefing($user, [
             'tasks_count' => 4,
@@ -64,5 +65,28 @@ class GeminiServiceTest extends TestCase
             'Move overdue work into the first focus block.',
             'Add one recovery break after deep work.',
         ], $briefing['recommended_adjustments']);
+    }
+
+    public function test_api_key_is_sent_only_in_the_header_and_is_not_logged_on_failure(): void
+    {
+        $apiKey = 'gemini-secret-that-must-never-appear-in-a-url-or-log';
+        config([
+            'ai.gemini.api_key' => $apiKey,
+            'ai.gemini.base_url' => 'https://gemini.test/v1beta',
+        ]);
+        Log::spy();
+        Http::fake([
+            'https://gemini.test/*' => Http::response(['error' => 'upstream unavailable'], 503),
+        ]);
+
+        $service = new GeminiService;
+        $service->parseTask('private task content');
+
+        Http::assertSent(fn ($request) => $request->hasHeader('x-goog-api-key', $apiKey)
+            && ! str_contains($request->url(), $apiKey)
+            && parse_url($request->url(), PHP_URL_QUERY) === null);
+        Log::shouldHaveReceived('warning')
+            ->once()
+            ->with('Gemini API failed, using fallback parser', ['status' => 503]);
     }
 }

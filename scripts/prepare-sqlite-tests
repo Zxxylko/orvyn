@@ -1,0 +1,132 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+BACKEND_DIR="$ROOT_DIR/backend"
+PACKAGE_MANIFEST="$ROOT_DIR/backend/bootstrap/cache/packages.php"
+SERVICE_MANIFEST="$ROOT_DIR/backend/bootstrap/cache/services.php"
+SOURCE_MIGRATIONS="$BACKEND_DIR/database/migrations"
+COMPATIBLE_MIGRATIONS="$ROOT_DIR/scripts/sqlite-test-migrations"
+STATE_DIR="$ROOT_DIR/.orvyn"
+TEMP_DATABASE="$STATE_DIR/sqlite-test-schema-$$.sqlite"
+TEMP_MIGRATIONS="$STATE_DIR/sqlite-test-migrations-$$"
+SCHEMA_DUMP="$BACKEND_DIR/database/schema/sqlite-schema.sql"
+
+cleanup() {
+  rm -f "$TEMP_DATABASE"
+  rm -rf "$TEMP_MIGRATIONS"
+}
+
+trap cleanup EXIT
+
+command -v sqlite3 >/dev/null 2>&1 || {
+  echo "sqlite3 diperlukan untuk menyiapkan schema tes." >&2
+  exit 1
+}
+
+if [[ ! -f "$PACKAGE_MANIFEST" ]]; then
+  echo "Package manifest Laravel belum tersedia: $PACKAGE_MANIFEST" >&2
+  echo "Jalankan Composer install sebelum menyiapkan tes SQLite." >&2
+  exit 1
+fi
+
+php -r '
+    $manifestPath = $argv[1];
+    $manifest = require $manifestPath;
+    $package = "pgvector/pgvector";
+
+    if (isset($manifest[$package])) {
+        unset($manifest[$package]);
+        $contents = "<?php\n\nreturn ".var_export($manifest, true).";\n";
+
+        if (file_put_contents($manifestPath, $contents, LOCK_EX) === false) {
+            fwrite(STDERR, "Tidak dapat memperbarui package manifest Laravel.\n");
+            exit(1);
+        }
+    }
+' "$PACKAGE_MANIFEST"
+
+# Laravel's compiled provider list may still contain pgvector from a previous
+# boot. It is generated again from packages.php on the next application boot.
+rm -f "$SERVICE_MANIFEST"
+
+if git -C "$ROOT_DIR" ls-files --error-unmatch \
+  "backend/database/schema/sqlite-schema.sql" >/dev/null 2>&1; then
+  echo "Schema SQLite sudah dilacak Git dan tidak akan ditimpa: $SCHEMA_DUMP" >&2
+  exit 1
+fi
+
+mkdir -p "$STATE_DIR" "$TEMP_MIGRATIONS" "$(dirname "$SCHEMA_DUMP")"
+chmod 700 "$STATE_DIR" "$TEMP_MIGRATIONS" 2>/dev/null || true
+
+cp "$SOURCE_MIGRATIONS"/*.php "$TEMP_MIGRATIONS/"
+cp "$COMPATIBLE_MIGRATIONS"/*.php "$TEMP_MIGRATIONS/"
+rm -f "$SCHEMA_DUMP"
+touch "$TEMP_DATABASE"
+chmod 600 "$TEMP_DATABASE"
+
+(
+  cd "$BACKEND_DIR"
+  APP_ENV=testing \
+  DB_CONNECTION=sqlite \
+  DB_DATABASE="$TEMP_DATABASE" \
+    php artisan migrate:fresh \
+      --database=sqlite \
+      --path="$TEMP_MIGRATIONS" \
+      --realpath \
+      --force \
+      --no-interaction \
+      --quiet
+
+  sqlite3 "$TEMP_DATABASE" '
+    CREATE TRIGGER normalize_ai_briefing_date_after_insert
+    AFTER INSERT ON ai_briefings
+    WHEN length(NEW.briefing_date) > 10
+    BEGIN
+      UPDATE ai_briefings
+      SET briefing_date = substr(NEW.briefing_date, 1, 10)
+      WHERE id = NEW.id;
+    END;
+
+    CREATE TRIGGER normalize_ai_briefing_date_after_update
+    AFTER UPDATE OF briefing_date ON ai_briefings
+    WHEN length(NEW.briefing_date) > 10
+    BEGIN
+      UPDATE ai_briefings
+      SET briefing_date = substr(NEW.briefing_date, 1, 10)
+      WHERE id = NEW.id;
+    END;
+
+    CREATE TRIGGER normalize_habit_check_in_date_after_insert
+    AFTER INSERT ON habit_check_ins
+    WHEN length(NEW.check_in_date) > 10
+    BEGIN
+      UPDATE habit_check_ins
+      SET check_in_date = substr(NEW.check_in_date, 1, 10)
+      WHERE id = NEW.id;
+    END;
+
+    CREATE TRIGGER normalize_habit_check_in_date_after_update
+    AFTER UPDATE OF check_in_date ON habit_check_ins
+    WHEN length(NEW.check_in_date) > 10
+    BEGIN
+      UPDATE habit_check_ins
+      SET check_in_date = substr(NEW.check_in_date, 1, 10)
+      WHERE id = NEW.id;
+    END;
+  '
+
+  APP_ENV=testing \
+  DB_CONNECTION=sqlite \
+  DB_DATABASE="$TEMP_DATABASE" \
+    php artisan schema:dump \
+      --database=sqlite \
+      --path="$SCHEMA_DUMP" \
+      --no-interaction \
+      --quiet
+)
+
+chmod 600 "$SCHEMA_DUMP"
+
+echo "✓ Schema tes SQLite dibuat tanpa migrasi PostgreSQL-only."

@@ -3,18 +3,19 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\TimeBlock;
 use App\Models\Task;
+use App\Models\TimeBlock;
 use App\Services\AnalyticsService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Carbon\Carbon;
 
 class TimeBlockController extends Controller
 {
     public function __construct(
         private AnalyticsService $analytics
     ) {}
+
     /**
      * Display a listing of the resource.
      */
@@ -26,7 +27,7 @@ class TimeBlockController extends Controller
         if ($request->has('start_date') && $request->has('end_date')) {
             $query->whereBetween('start_time', [
                 Carbon::parse($request->start_date)->startOfDay(),
-                Carbon::parse($request->end_date)->endOfDay()
+                Carbon::parse($request->end_date)->endOfDay(),
             ]);
         }
 
@@ -34,7 +35,7 @@ class TimeBlockController extends Controller
 
         return response()->json([
             'data' => $timeBlocks,
-            'message' => 'Time blocks retrieved successfully'
+            'message' => 'Time blocks retrieved successfully',
         ]);
     }
 
@@ -53,9 +54,9 @@ class TimeBlockController extends Controller
         ]);
 
         // If task_id is provided, verify it belongs to this user
-        if (!empty($validated['task_id'])) {
+        if (! empty($validated['task_id'])) {
             $task = Auth::user()->tasks()->find($validated['task_id']);
-            if (!$task) {
+            if (! $task) {
                 return response()->json(['message' => 'Invalid task ID provided.'], 403);
             }
         }
@@ -64,7 +65,7 @@ class TimeBlockController extends Controller
 
         return response()->json([
             'data' => $timeBlock->load('task'),
-            'message' => 'Time block created successfully'
+            'message' => 'Time block created successfully',
         ], 201);
     }
 
@@ -77,7 +78,7 @@ class TimeBlockController extends Controller
 
         return response()->json([
             'data' => $timeBlock->load('task'),
-            'message' => 'Time block retrieved successfully'
+            'message' => 'Time block retrieved successfully',
         ]);
     }
 
@@ -97,9 +98,9 @@ class TimeBlockController extends Controller
             'block_type' => 'nullable|string|in:task,break,class,personal,study',
         ]);
 
-        if (isset($validated['task_id']) && !empty($validated['task_id'])) {
+        if (isset($validated['task_id']) && ! empty($validated['task_id'])) {
             $task = Auth::user()->tasks()->find($validated['task_id']);
-            if (!$task) {
+            if (! $task) {
                 return response()->json(['message' => 'Invalid task ID provided.'], 403);
             }
         }
@@ -108,7 +109,7 @@ class TimeBlockController extends Controller
 
         return response()->json([
             'data' => $timeBlock->load('task'),
-            'message' => 'Time block updated successfully'
+            'message' => 'Time block updated successfully',
         ]);
     }
 
@@ -122,7 +123,7 @@ class TimeBlockController extends Controller
         $timeBlock->delete();
 
         return response()->json([
-            'message' => 'Time block deleted successfully'
+            'message' => 'Time block deleted successfully',
         ]);
     }
 
@@ -143,7 +144,7 @@ class TimeBlockController extends Controller
         if ($tasks->isEmpty()) {
             return response()->json([
                 'message' => 'No tasks to schedule. Create some tasks first!',
-                'data' => []
+                'data' => [],
             ]);
         }
 
@@ -184,7 +185,7 @@ class TimeBlockController extends Controller
                         $difficulty = 3;
                     }
                     $dailyClm[$dayStr] += ($durationHours * $difficulty);
-                    
+
                     if ($fixed->block_type === 'task' || $fixed->block_type === 'study') {
                         $dailyStudyMinutes[$dayStr] += ($durationHours * 60);
                     }
@@ -217,7 +218,7 @@ class TimeBlockController extends Controller
             $scheduled = false;
 
             // Try scheduling across the next 7 days
-            for ($dayOffset = 0; $dayOffset < 7 && !$scheduled; $dayOffset++) {
+            for ($dayOffset = 0; $dayOffset < 7 && ! $scheduled; $dayOffset++) {
                 $date = now()->addDays($dayOffset);
                 $dayStr = $date->toDateString();
 
@@ -229,10 +230,10 @@ class TimeBlockController extends Controller
                 // Define Carbon datetime objects for the day's boundaries
                 $morningStart = Carbon::create($date->year, $date->month, $date->day, 9, 0, 0);
                 $morningEnd = Carbon::create($date->year, $date->month, $date->day, 13, 0, 0);
-                
+
                 $afternoonStart = Carbon::create($date->year, $date->month, $date->day, 13, 0, 0);
                 $afternoonEnd = Carbon::create($date->year, $date->month, $date->day, 15, 0, 0);
-                
+
                 $lateStart = Carbon::create($date->year, $date->month, $date->day, 15, 0, 0);
                 $lateEnd = Carbon::create($date->year, $date->month, $date->day, 18, 0, 0);
 
@@ -242,24 +243,26 @@ class TimeBlockController extends Controller
                     $windows = [
                         ['start' => $morningStart, 'end' => $morningEnd, 'label' => 'Morning Deep Work'],
                         ['start' => $lateStart, 'end' => $lateEnd, 'label' => 'Late Afternoon Work'],
-                        ['start' => $afternoonStart, 'end' => $afternoonEnd, 'label' => 'Afternoon Fillers']
+                        ['start' => $afternoonStart, 'end' => $afternoonEnd, 'label' => 'Afternoon Fillers'],
                     ];
                 } elseif ($preferredWindow === 'afternoon') {
                     $windows = [
                         ['start' => $afternoonStart, 'end' => $afternoonEnd, 'label' => 'Afternoon Fillers'],
                         ['start' => $lateStart, 'end' => $lateEnd, 'label' => 'Late Afternoon Work'],
-                        ['start' => $morningStart, 'end' => $morningEnd, 'label' => 'Morning Deep Work']
+                        ['start' => $morningStart, 'end' => $morningEnd, 'label' => 'Morning Deep Work'],
                     ];
                 } else {
                     $windows = [
                         ['start' => $lateStart, 'end' => $lateEnd, 'label' => 'Late Afternoon Work'],
                         ['start' => $morningStart, 'end' => $morningEnd, 'label' => 'Morning Deep Work'],
-                        ['start' => $afternoonStart, 'end' => $afternoonEnd, 'label' => 'Afternoon Fillers']
+                        ['start' => $afternoonStart, 'end' => $afternoonEnd, 'label' => 'Afternoon Fillers'],
                     ];
                 }
 
                 foreach ($windows as $window) {
-                    if ($scheduled) break;
+                    if ($scheduled) {
+                        break;
+                    }
 
                     $slotStart = $window['start']->copy();
                     $windowEnd = $window['end']->copy();
@@ -275,7 +278,7 @@ class TimeBlockController extends Controller
                         }
                     }
 
-                    while ($slotStart->copy()->addMinutes($bufferedDuration)->lte($windowEnd) && !$scheduled) {
+                    while ($slotStart->copy()->addMinutes($bufferedDuration)->lte($windowEnd) && ! $scheduled) {
                         $potentialEnd = $slotStart->copy()->addMinutes($bufferedDuration);
                         $overlap = false;
 
@@ -284,6 +287,7 @@ class TimeBlockController extends Controller
                             $bufferDiff = Carbon::parse($lastScheduledEnd[$dayStr])->diffInMinutes($slotStart);
                             if ($bufferDiff < 15) {
                                 $slotStart = Carbon::parse($lastScheduledEnd[$dayStr])->copy()->addMinutes(15);
+
                                 continue;
                             }
                         }
@@ -301,7 +305,7 @@ class TimeBlockController extends Controller
                         }
 
                         // Check overlap with newly scheduled blocks
-                        if (!$overlap) {
+                        if (! $overlap) {
                             foreach ($newBlocks as $newB) {
                                 $newStart = Carbon::parse($newB['start_time']);
                                 $newEnd = Carbon::parse($newB['end_time'])->copy()->addMinutes(15); // Enforce buffer
@@ -314,7 +318,7 @@ class TimeBlockController extends Controller
                             }
                         }
 
-                        if (!$overlap) {
+                        if (! $overlap) {
                             // Check if a Recharge Break needs to be auto-injected
                             // Enforce 20-minute breaks after 90 minutes of continuous study or 120 cumulative study minutes
                             if ($dailyStudyMinutes[$dayStr] >= 90) {
@@ -334,6 +338,7 @@ class TimeBlockController extends Controller
 
                                 $dailyStudyMinutes[$dayStr] = 0; // Reset continuous timer
                                 $slotStart = $breakEnd->copy()->addMinutes(15); // Advance slot past break and buffer
+
                                 continue;
                             }
 
@@ -341,7 +346,7 @@ class TimeBlockController extends Controller
                             $newBlockData = [
                                 'user_id' => $user->id,
                                 'task_id' => $task->id,
-                                'label' => 'Focus: ' . $task->title,
+                                'label' => 'Focus: '.$task->title,
                                 'start_time' => $slotStart->toDateTimeString(),
                                 'end_time' => $potentialEnd->toDateTimeString(),
                                 'is_locked' => false,
@@ -349,7 +354,7 @@ class TimeBlockController extends Controller
                             ];
 
                             $newBlocks[] = $newBlockData;
-                            
+
                             // Update tracking metrics
                             $taskClm = ($bufferedDuration / 60) * $difficulty;
                             $dailyClm[$dayStr] += $taskClm;
@@ -379,7 +384,7 @@ class TimeBlockController extends Controller
 
         return response()->json([
             'data' => TimeBlock::whereIn('id', collect($createdBlocks)->pluck('id'))->with('task')->get(),
-            'message' => 'Cognitive Schedule Optimized! Scheduled ' . count($createdBlocks) . ' tasks with Planning Fallacy safety buffers.'
+            'message' => 'Cognitive Schedule Optimized! Scheduled '.count($createdBlocks).' tasks with Planning Fallacy safety buffers.',
         ]);
     }
 }

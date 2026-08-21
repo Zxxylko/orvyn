@@ -11,6 +11,8 @@ class DemoAuthControllerTest extends TestCase
 
     public function test_demo_login_returns_a_valid_token_and_seeded_user(): void
     {
+        config(['services.demo_login.enabled' => true]);
+
         $response = $this->postJson('/api/v1/auth/demo-login')
             ->assertOk()
             ->assertJsonPath('data.user.email', 'demo@orvyn.app')

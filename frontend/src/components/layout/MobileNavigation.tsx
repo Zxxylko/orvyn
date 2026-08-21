@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { HelpCircle, Menu, Search, X } from 'lucide-react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink } from '@/lib/router';
+import { useLocation } from '@/lib/router-hooks';
 import { cn } from '@/lib/utils';
 import { navigationGroups, navigationItems } from './navigation';
 
@@ -81,32 +82,30 @@ export function MobileNavigation({ onOpenCommandPalette, onOpenOnboarding }: Mob
       >
         {primaryItems.map((item) => {
           const Icon = item.icon;
+          const isActive = item.to === location.pathname;
+
           return (
             <NavLink
               key={item.to}
               to={item.to}
-              className={({ isActive }) => cn(
+              className={cn(
                 'focus-ring relative flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl text-[9px] font-bold transition',
                 isActive ? 'text-white' : 'text-slate-500 active:text-slate-200'
               )}
             >
-              {({ isActive }) => (
-                <>
-                  {isActive && (
-                    <motion.span
-                      layoutId="mobile-nav-active"
-                      aria-hidden="true"
-                      className="absolute inset-0 rounded-xl border border-cyan-300/15 bg-cyan-300/10"
-                      transition={shouldReduceMotion
-                        ? { duration: 0 }
-                        : { duration: 0.22, ease: [0.22, 1, 0.36, 1] }
-                      }
-                    />
-                  )}
-                  <Icon className={cn('relative z-10 h-4 w-4', isActive && 'text-cyan-200')} />
-                  <span className="relative z-10">{item.shortLabel}</span>
-                </>
+              {isActive && (
+                <motion.span
+                  layoutId="mobile-nav-active"
+                  aria-hidden="true"
+                  className="absolute inset-0 rounded-xl border border-cyan-300/15 bg-cyan-300/10"
+                  transition={shouldReduceMotion
+                    ? { duration: 0 }
+                    : { duration: 0.22, ease: [0.22, 1, 0.36, 1] }
+                  }
+                />
               )}
+              <Icon className={cn('relative z-10 h-4 w-4', isActive && 'text-cyan-200')} />
+              <span className="relative z-10">{item.shortLabel}</span>
             </NavLink>
           );
         })}

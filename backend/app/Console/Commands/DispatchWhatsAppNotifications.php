@@ -19,6 +19,7 @@ class DispatchWhatsAppNotifications extends Command
         WhatsAppConnection::query()
             ->with('user')
             ->where('enabled', true)
+            ->whereNotNull('phone_verified_at')
             ->whereNotNull('phone_number')
             ->when($this->option('user'), fn ($query, $userId) => $query->where('user_id', $userId))
             ->chunkById(100, function ($connections) use ($composer) {

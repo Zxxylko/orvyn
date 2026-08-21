@@ -1,0 +1,35 @@
+{
+	admin off
+	auto_https off
+	log {
+		output stderr
+		format json
+		level WARN
+	}
+}
+
+:8080 {
+	root * /var/www/html/public
+	encode zstd gzip
+
+	@blocked path /.env /.git/* /composer.* /artisan /storage/* /vendor/*
+	respond @blocked 404
+
+	php_fastcgi php:9000 {
+		root /var/www/html/public
+		capture_stderr
+	}
+
+	file_server
+
+	header {
+		-X-Powered-By
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+	}
+
+	log {
+		output stderr
+		format json
+	}
+}

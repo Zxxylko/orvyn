@@ -1,6 +1,6 @@
 # ORVYN Backend
 
-Laravel 13 API untuk autentikasi, task management, scheduling, briefing, wellness, finance, realtime event, Ollama, dan orkestrasi WhatsApp.
+Laravel 13 API untuk autentikasi, task management, scheduling, briefing, wellness, finance, realtime event, Ollama, push notification, dan orkestrasi WhatsApp.
 
 ## Menjalankan
 
@@ -20,7 +20,27 @@ php artisan schedule:work
 php artisan reverb:start
 ```
 
-Scheduler menjalankan `notifications:dispatch-whatsapp` setiap menit dan menghormati timezone serta preferensi setiap pengguna.
+Scheduler menjalankan `notifications:dispatch-whatsapp` dan `notifications:dispatch-push` setiap menit. Keduanya menghormati timezone, feature toggle, jadwal pengguna, dan dedupe key.
+
+## Autentikasi dan privasi
+
+- Demo login hanya untuk development dan menghasilkan Sanctum token yang memiliki nama perangkat serta expiry.
+- `POST /api/v1/auth/firebase` memverifikasi Firebase ID token bila `FIREBASE_CREDENTIALS` dikonfigurasi; `FIREBASE_PROJECT_ID` harus sama dengan project client web/mobile.
+- Logout, daftar sesi, revoke per perangkat, dan logout-all tersedia di bawah `/api/v1/auth`.
+- Ekspor data dan penghapusan akun tersedia di `/api/v1/user/export` serta `DELETE /api/v1/user`. Penghapusan memerlukan `confirmation: "HAPUS AKUN"` dan `id_token` dari login Firebase yang masih baru; identity Firebase dihapus sebelum data ORVYN.
+- Scoped token Odysseus tidak dapat mengelola sesi, push token, ekspor, atau penghapusan akun.
+
+## Push notification
+
+Mobile mendaftarkan Expo token melalui `POST /api/v1/push-tokens`. Status, jadwal, feature toggle, dan test delivery tersedia di `/api/v1/push-notifications`.
+
+```env
+EXPO_PUSH_ENABLED=true
+EXPO_PUSH_URL=https://exp.host/--/api/v2/push/send
+EXPO_ACCESS_TOKEN=
+```
+
+Job menonaktifkan token yang menerima `DeviceNotRegistered` dan mencatat status delivery tanpa mengekspos token pada response API.
 
 ## AI
 

@@ -3,11 +3,10 @@ import type { User } from '@/types/user';
 
 export interface AuthContextType {
   user: User | null;
-  token: string | null;
   loading: boolean;
-  login: (token: string) => Promise<void>;
+  firebaseLogin: (idToken: string) => Promise<void>;
   demoLogin: () => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   isAuthenticated: boolean;
   refreshUser: () => Promise<void>;
 }

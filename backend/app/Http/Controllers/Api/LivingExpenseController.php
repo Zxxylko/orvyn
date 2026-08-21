@@ -4,9 +4,9 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\LivingExpense;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Carbon\Carbon;
 
 class LivingExpenseController extends Controller
 {
@@ -119,7 +119,7 @@ class LivingExpenseController extends Controller
             ->get();
 
         $totalSpend = (float) $expenses->sum('amount');
-        
+
         // Dynamic category aggregation
         $categories = ['rent' => 0.0, 'food' => 0.0, 'laundry' => 0.0, 'coffee' => 0.0, 'developer_sub' => 0.0, 'other' => 0.0];
         foreach ($expenses as $exp) {
@@ -136,27 +136,27 @@ class LivingExpenseController extends Controller
         $insights = [];
 
         if ($totalSpend > $monthlyLimit) {
-            $insights[] = "Anggaran bulanan Anda telah melampaui Rp " . number_format($monthlyLimit, 0, ',', '.') . ". Kurangi pengeluaran non-essential segera.";
+            $insights[] = 'Anggaran bulanan Anda telah melampaui Rp '.number_format($monthlyLimit, 0, ',', '.').'. Kurangi pengeluaran non-essential segera.';
         } elseif ($totalSpend > $monthlyLimit * 0.8) {
-            $insights[] = "Pengeluaran Anda hampir mencapai batas 80% anggaran bulanan. Waktunya berhemat.";
+            $insights[] = 'Pengeluaran Anda hampir mencapai batas 80% anggaran bulanan. Waktunya berhemat.';
         }
 
         if ($totalSpend > 0) {
             if ($categories['coffee'] > $totalSpend * 0.15) {
-                $insights[] = "Pengeluaran kopi/nongkrong Anda cukup tinggi bulan ini (" . round(($categories['coffee'] / $totalSpend) * 100) . "% dari total pengeluaran). Coba seduh kopi sendiri di kost untuk menghemat.";
+                $insights[] = 'Pengeluaran kopi/nongkrong Anda cukup tinggi bulan ini ('.round(($categories['coffee'] / $totalSpend) * 100).'% dari total pengeluaran). Coba seduh kopi sendiri di kost untuk menghemat.';
             }
 
             if ($categories['food'] < $totalSpend * 0.20 && $categories['food'] > 0) {
-                $insights[] = "Porsi anggaran makan Anda sangat kecil. Pastikan Anda makan dengan porsi bergizi seimbang di Warteg sekitar Sukabirus.";
+                $insights[] = 'Porsi anggaran makan Anda sangat kecil. Pastikan Anda makan dengan porsi bergizi seimbang di Warteg sekitar Sukabirus.';
             }
         }
 
         if ($categories['developer_sub'] > 300000) {
-            $insights[] = "Tagihan tool/SaaS coding Anda mencapai Rp " . number_format($categories['developer_sub'], 0, ',', '.') . ". Pastikan semua subscription (GitHub Copilot, dsb.) aktif digunakan.";
+            $insights[] = 'Tagihan tool/SaaS coding Anda mencapai Rp '.number_format($categories['developer_sub'], 0, ',', '.').'. Pastikan semua subscription (GitHub Copilot, dsb.) aktif digunakan.';
         }
 
         if (empty($insights)) {
-            $insights[] = "Pengeluaran Anda sangat rapi dan terkontrol bulan ini. Pertahankan ritme finansial ini.";
+            $insights[] = 'Pengeluaran Anda sangat rapi dan terkontrol bulan ini. Pertahankan ritme finansial ini.';
         }
 
         return response()->json([

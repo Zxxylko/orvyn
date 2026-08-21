@@ -26,7 +26,7 @@ return new class extends Migration
             $table->boolean('ai_processed')->default(false);
             $table->timestamp('completed_at')->nullable();
             $table->timestamps();
-            
+
             $table->index(['user_id', 'status']);
             $table->index(['user_id', 'deadline']);
         });

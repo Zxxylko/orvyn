@@ -3,13 +3,16 @@
 namespace App\Services\AI;
 
 use App\Models\User;
+use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 class GeminiService
 {
     private string $apiKey;
+
     private string $baseUrl;
+
     private array $models;
 
     public function __construct()
@@ -30,37 +33,37 @@ class GeminiService
 
         try {
             $prompt = $this->buildTaskParsePrompt($input);
-            
-            $response = Http::timeout(30)
-                ->post("{$this->baseUrl}/models/{$this->models['flash']}:generateContent?key={$this->apiKey}", [
+
+            $response = $this->client()
+                ->post("{$this->baseUrl}/models/{$this->models['flash']}:generateContent", [
                     'contents' => [
                         [
                             'parts' => [
-                                ['text' => $prompt]
-                            ]
-                        ]
+                                ['text' => $prompt],
+                            ],
+                        ],
                     ],
                     'generationConfig' => [
                         'temperature' => 0.1,
                         'topK' => 1,
                         'topP' => 1,
                         'maxOutputTokens' => 1024,
-                    ]
+                    ],
                 ]);
 
             if ($response->successful()) {
                 $result = $response->json();
                 $text = $result['candidates'][0]['content']['parts'][0]['text'] ?? '';
-                
+
                 // Extract JSON from markdown code blocks if present
                 if (preg_match('/```json\s*(.*?)\s*```/s', $text, $matches)) {
                     $text = $matches[1];
                 } elseif (preg_match('/```\s*(.*?)\s*```/s', $text, $matches)) {
                     $text = $matches[1];
                 }
-                
+
                 $parsed = json_decode($text, true);
-                
+
                 if (json_last_error() === JSON_ERROR_NONE) {
                     return $this->normalizeTaskData($parsed);
                 }
@@ -68,13 +71,13 @@ class GeminiService
 
             Log::warning('Gemini API failed, using fallback parser', [
                 'status' => $response->status(),
-                'body' => $response->body()
             ]);
 
             return $this->fallbackParse($input);
 
-        } catch (\Exception $e) {
-            Log::error('Gemini API error', ['error' => $e->getMessage()]);
+        } catch (\Throwable $exception) {
+            $this->logException('task parsing', $exception);
+
             return $this->fallbackParse($input);
         }
     }
@@ -89,25 +92,27 @@ class GeminiService
         }
 
         try {
-            $response = Http::timeout(30)
-                ->post("{$this->baseUrl}/models/{$this->models['embedding']}:embedContent?key={$this->apiKey}", [
+            $response = $this->client()
+                ->post("{$this->baseUrl}/models/{$this->models['embedding']}:embedContent", [
                     'model' => "models/{$this->models['embedding']}",
                     'content' => [
                         'parts' => [
-                            ['text' => $text]
-                        ]
-                    ]
+                            ['text' => $text],
+                        ],
+                    ],
                 ]);
 
             if ($response->successful()) {
                 $result = $response->json();
+
                 return $result['embedding']['values'] ?? null;
             }
 
             return null;
 
-        } catch (\Exception $e) {
-            Log::error('Gemini embedding error', ['error' => $e->getMessage()]);
+        } catch (\Throwable $exception) {
+            $this->logException('embedding', $exception);
+
             return null;
         }
     }
@@ -123,15 +128,15 @@ class GeminiService
 
         try {
             $prompt = $this->buildBriefingPrompt($user, $context);
-            
-            $response = Http::timeout(30)
-                ->post("{$this->baseUrl}/models/{$this->models['flash']}:generateContent?key={$this->apiKey}", [
+
+            $response = $this->client()
+                ->post("{$this->baseUrl}/models/{$this->models['flash']}:generateContent", [
                     'contents' => [
                         [
                             'parts' => [
-                                ['text' => $prompt]
-                            ]
-                        ]
+                                ['text' => $prompt],
+                            ],
+                        ],
                     ],
                     'generationConfig' => [
                         'temperature' => 0.2,
@@ -139,40 +144,41 @@ class GeminiService
                         'topP' => 1,
                         'maxOutputTokens' => 1024,
                         'responseMimeType' => 'application/json',
-                    ]
+                    ],
                 ]);
 
             if ($response->successful()) {
                 $result = $response->json();
                 $text = $result['candidates'][0]['content']['parts'][0]['text'] ?? '';
-                
+
                 // Try to parse JSON response
                 if (preg_match('/```json\s*(.*?)\s*```/s', $text, $matches)) {
                     $text = $matches[1];
                 }
-                
+
                 $parsed = json_decode($text, true);
-                
+
                 if (json_last_error() === JSON_ERROR_NONE && is_array($parsed)) {
                     return $this->normalizeBriefingData($parsed, $context);
                 }
-                
+
                 // If not JSON, treat as plain text summary
                 return [
                     'summary' => trim($text) !== '' ? trim($text) : $this->fallbackBriefing($context)['summary'],
                     'health_metrics' => $this->calculateHealthMetrics($context),
-                    'recommended_adjustments' => []
+                    'recommended_adjustments' => [],
                 ];
             }
 
             Log::warning('Gemini API failed to generate briefing, using fallback', [
-                'status' => $response->status()
+                'status' => $response->status(),
             ]);
 
             return $this->fallbackBriefing($context);
 
-        } catch (\Exception $e) {
-            Log::error('Gemini API briefing error', ['error' => $e->getMessage()]);
+        } catch (\Throwable $exception) {
+            $this->logException('briefing', $exception);
+
             return $this->fallbackBriefing($context);
         }
     }
@@ -186,27 +192,22 @@ class GeminiService
         $overdueCount = $context['overdue_count'] ?? 0;
         $upcomingDeadlines = $context['upcoming_deadlines'] ?? [];
         $todaySchedule = $context['today_schedule'] ?? [];
-        $healthToday = $context['health_today'] ?? null;
         $academicDeadlines = $context['academic_deadlines'] ?? [];
-        $monthlySpend = $context['monthly_spend'] ?? 0;
         $completionRate = $context['completion_rate'] ?? 0;
         $avgDifficulty = $context['avg_difficulty'] ?? 3;
 
         $deadlinesList = collect($upcomingDeadlines)
-            ->map(fn($task) => "- {$task['title']} (due {$task['deadline']})")
+            ->map(fn ($task) => "- {$task['title']} (due {$task['deadline']})")
             ->join("\n");
         $scheduleList = collect($todaySchedule)
-            ->map(fn($block) => "- {$block['start']}-{$block['end']}: {$block['label']} ({$block['type']})")
+            ->map(fn ($block) => "- {$block['start']}-{$block['end']}: {$block['label']} ({$block['type']})")
             ->join("\n");
         $academicList = collect($academicDeadlines)
-            ->map(fn($task) => "- [{$task['course']}] {$task['title']} / {$task['type']} (due {$task['deadline']})")
+            ->map(fn ($task) => "- [{$task['course']}] {$task['title']} / {$task['type']} (due {$task['deadline']})")
             ->join("\n");
-        $healthLine = $healthToday
-            ? "Hydration: {$healthToday['hydration_ml']}ml, caffeine: {$healthToday['caffeine_mg']}mg, screen time: {$healthToday['screen_time_minutes']}m, sleep: {$healthToday['sleep_hours']}h"
-            : "No health log recorded today.";
 
         return <<<PROMPT
-You are an AI productivity coach for {$user->name}, a student using ORVYN.
+You are an AI productivity coach for a student using ORVYN.
 
 Generate a daily briefing based on their current workload:
 
@@ -224,10 +225,6 @@ Generate a daily briefing based on their current workload:
 
 **Academic LMS Deadlines (7 days):**
 {$academicList}
-
-**Wellness & Finance Signals:**
-- {$healthLine}
-- Month-to-date spend: {$monthlySpend} IDR
 
 Provide a brief, actionable daily briefing in JSON format:
 {
@@ -297,12 +294,12 @@ PROMPT;
 
         $calculatedMetrics = $this->calculateHealthMetrics($context);
         $burnoutRisk = $metrics['burnout_risk'] ?? $calculatedMetrics['burnout_risk'];
-        if (!in_array($burnoutRisk, ['low', 'medium', 'high'], true)) {
+        if (! in_array($burnoutRisk, ['low', 'medium', 'high'], true)) {
             $burnoutRisk = $calculatedMetrics['burnout_risk'];
         }
 
         $workloadBalance = $metrics['workload_balance'] ?? $calculatedMetrics['workload_balance'];
-        if (!in_array($workloadBalance, ['underloaded', 'balanced', 'overloaded'], true)) {
+        if (! in_array($workloadBalance, ['underloaded', 'balanced', 'overloaded'], true)) {
             $workloadBalance = $calculatedMetrics['workload_balance'];
         }
 
@@ -313,7 +310,7 @@ PROMPT;
         $cognitiveLoad = is_numeric($cognitiveLoad) ? max(0, min(18, (float) $cognitiveLoad)) : $calculatedMetrics['cognitive_load'];
 
         $adjustments = $data['recommended_adjustments'] ?? $fallback['recommended_adjustments'];
-        if (!is_array($adjustments)) {
+        if (! is_array($adjustments)) {
             $adjustments = [$adjustments];
         }
 
@@ -325,8 +322,8 @@ PROMPT;
 
                 return $item;
             })
-            ->filter(fn($item) => is_scalar($item) && trim((string) $item) !== '')
-            ->map(fn($item) => trim((string) $item))
+            ->filter(fn ($item) => is_scalar($item) && trim((string) $item) !== '')
+            ->map(fn ($item) => trim((string) $item))
             ->take(4)
             ->values()
             ->all();
@@ -351,11 +348,11 @@ PROMPT;
         $tasksCount = $context['tasks_count'] ?? 0;
         $overdueCount = $context['overdue_count'] ?? 0;
 
-        $summary = "You have {$tasksCount} active task" . ($tasksCount === 1 ? '' : 's');
+        $summary = "You have {$tasksCount} active task".($tasksCount === 1 ? '' : 's');
         if ($overdueCount > 0) {
             $summary .= " with {$overdueCount} overdue. Prioritize the overdue work first, then protect one focused block for the next closest deadline.";
         } else {
-            $summary .= ". Your workload is manageable today, so use the cleanest focus window for the highest-priority task.";
+            $summary .= '. Your workload is manageable today, so use the cleanest focus window for the highest-priority task.';
         }
 
         return [
@@ -368,12 +365,18 @@ PROMPT;
         ];
     }
 
+    public function deterministicBriefingFallback(array $context): array
+    {
+        return $this->fallbackBriefing($context);
+    }
+
     /**
      * Build the task parsing prompt
      */
     private function buildTaskParsePrompt(string $input): string
     {
         $nowStr = now()->toDateTimeString();
+
         return <<<PROMPT
 You are a senior task parser for a Computer Science / Informatics student operating system. Parse the following natural language input into structured JSON.
 
@@ -466,9 +469,9 @@ PROMPT;
 
         // Extract duration
         if (preg_match('/(\d+)\s*(hour|hr|h)/i', $input, $matches)) {
-            $data['duration_minutes'] = (int)$matches[1] * 60;
+            $data['duration_minutes'] = (int) $matches[1] * 60;
         } elseif (preg_match('/(\d+)\s*(minute|min|m)/i', $input, $matches)) {
-            $data['duration_minutes'] = (int)$matches[1];
+            $data['duration_minutes'] = (int) $matches[1];
         }
 
         // Extract Category
@@ -501,5 +504,26 @@ PROMPT;
         }
 
         return $data;
+    }
+
+    public function deterministicTaskFallback(string $input): array
+    {
+        return $this->fallbackParse($input);
+    }
+
+    private function client(): PendingRequest
+    {
+        return Http::acceptJson()
+            ->asJson()
+            ->withHeaders(['x-goog-api-key' => $this->apiKey])
+            ->timeout(30);
+    }
+
+    private function logException(string $operation, \Throwable $exception): void
+    {
+        Log::warning("Gemini {$operation} request failed", [
+            'exception' => $exception::class,
+            'code' => $exception->getCode(),
+        ]);
     }
 }

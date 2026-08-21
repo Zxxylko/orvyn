@@ -3,6 +3,12 @@
 use Illuminate\Support\Str;
 
 return [
+    'dashboard_enabled' => env('HORIZON_DASHBOARD_ENABLED', false),
+
+    'admin_emails' => array_values(array_filter(array_map(
+        'trim',
+        explode(',', env('HORIZON_ADMIN_EMAILS', '')),
+    ))),
 
     /*
     |--------------------------------------------------------------------------

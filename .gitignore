@@ -15,3 +15,9 @@ Thumbs.db
 *.log
 *.tmp
 *.cache
+.orvyn/
+backend/database/schema/sqlite-schema.sql
+mobile/.orvyn-export-check/
+mobile/.ci-export/
+mobile/google-services.json
+mobile/GoogleService-Info.plist

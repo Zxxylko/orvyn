@@ -3,11 +3,9 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\FocusLog;
 use App\Services\AnalyticsService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Carbon\Carbon;
 
 class AnalyticsController extends Controller
 {
@@ -52,6 +50,12 @@ class AnalyticsController extends Controller
 
         $user = Auth::user();
 
+        if (! empty($validated['task_id']) && ! $user->tasks()->whereKey($validated['task_id'])->exists()) {
+            return response()->json([
+                'message' => 'Invalid task ID provided.',
+            ], 403);
+        }
+
         $log = $user->focusLogs()->create($validated);
 
         // Update the student's streak
@@ -89,7 +93,9 @@ class AnalyticsController extends Controller
         $days = $validated['days'] ?? 30;
 
         $logs = $user->focusLogs()
-            ->with('task:id,title,category')
+            ->with(['task' => fn ($query) => $query
+                ->where('user_id', $user->id)
+                ->select('id', 'title', 'category')])
             ->recentDays($days)
             ->orderByDesc('started_at')
             ->limit(100)

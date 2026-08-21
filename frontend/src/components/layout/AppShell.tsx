@@ -4,20 +4,20 @@ import { CommandPalette } from './CommandPalette';
 import { useAuth } from '@/contexts/auth';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { ArrowUp, CalendarDays, Command, Plus } from 'lucide-react';
-import { Navigate, useLocation, useNavigate, useOutlet } from 'react-router-dom';
+import { Navigate } from '@/lib/router';
+import { useLocation, useNavigate } from '@/lib/router-hooks';
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { MobileNavigation } from './MobileNavigation';
 import { OnboardingTour } from './OnboardingTour';
 
 interface AppShellProps {
-  children?: React.ReactNode;
+  children: React.ReactNode;
 }
 
 export function AppShell({ children }: AppShellProps) {
-  const { token, loading } = useAuth();
+  const { isAuthenticated, loading } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
-  const outlet = useOutlet();
   const shouldReduceMotion = useReducedMotion();
   const scrollViewportRef = useRef<HTMLElement | null>(null);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
@@ -86,8 +86,8 @@ export function AppShell({ children }: AppShellProps) {
     );
   }
 
-  // Redirect to login if no auth token exists
-  if (!token) {
+  // Redirect to login when the server session is unavailable.
+  if (!isAuthenticated) {
     return <Navigate to="/" replace />;
   }
 
@@ -132,7 +132,7 @@ export function AppShell({ children }: AppShellProps) {
                 className="page-motion mx-auto h-full w-full max-w-7xl"
               >
                 <Suspense fallback={<RouteContentLoader />}>
-                  {children ?? outlet}
+                  {children}
                 </Suspense>
               </motion.div>
           </AnimatePresence>

@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <radialGradient id="background" cx="32%" cy="24%" r="92%">
+      <stop offset="0" stop-color="#172B46"/>
+      <stop offset="0.58" stop-color="#0F172A"/>
+      <stop offset="1" stop-color="#070A0F"/>
+    </radialGradient>
+    <linearGradient id="orbit" x1="196" y1="178" x2="824" y2="846" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#67E8F9"/>
+      <stop offset="0.48" stop-color="#22D3EE"/>
+      <stop offset="1" stop-color="#A78BFA"/>
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="24" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#background)"/>
+  <circle cx="512" cy="512" r="332" fill="none" stroke="#67E8F9" stroke-opacity="0.08" stroke-width="2"/>
+  <circle cx="512" cy="512" r="260" fill="#0B0F14" fill-opacity="0.72" stroke="#F8FAFC" stroke-opacity="0.08" stroke-width="2"/>
+  <circle cx="512" cy="512" r="214" fill="none" stroke="url(#orbit)" stroke-width="112" stroke-linecap="round" stroke-dasharray="1170 176" transform="rotate(-42 512 512)" filter="url(#glow)"/>
+  <circle cx="512" cy="512" r="58" fill="#0B0F14" stroke="#F8FAFC" stroke-opacity="0.14" stroke-width="2"/>
+  <path d="M512 480v64M480 512h64" stroke="#F8FAFC" stroke-width="18" stroke-linecap="round"/>
+  <circle cx="754" cy="302" r="20" fill="#F8FAFC"/>
+</svg>

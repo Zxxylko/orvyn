@@ -2,17 +2,86 @@ import axios, { isAxiosError } from 'axios';
 import type { CreateTimeBlockData, UpdateTimeBlockData } from '@/types/timeblock';
 import type { CreateHabitData } from '@/types/habit';
 import type { CreateCampusScheduleData } from '@/types/campus';
+import type { User } from '@/types/user';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+const API_ORIGIN = new URL(API_BASE_URL, window.location.origin).origin;
+const CSRF_COOKIE_URL = import.meta.env.VITE_CSRF_COOKIE_URL
+  || `${API_ORIGIN}/sanctum/csrf-cookie`;
+
+export const AUTH_EXPIRED_EVENT = 'orvyn:auth-expired';
+
+interface ApiDataResponse<T> {
+  data: T;
+  message?: string;
+}
+
+interface AuthLoginData {
+  user: User;
+}
+
+export interface BroadcastAuthorization {
+  auth: string;
+  channel_data?: string;
+  shared_secret?: string;
+}
+
+export interface AuthSession {
+  id: number;
+  device_name: string;
+  abilities: string[];
+  last_used_at: string | null;
+  expires_at: string | null;
+  created_at: string | null;
+  is_current: boolean;
+}
 
 // Create axios instance
 export const api = axios.create({
   baseURL: API_BASE_URL,
+  withCredentials: true,
+  withXSRFToken: true,
   headers: {
-    'Content-Type': 'application/json',
     'Accept': 'application/json',
+    'Content-Type': 'application/json',
+    'X-Requested-With': 'XMLHttpRequest',
   },
 });
+
+const csrfClient = axios.create({
+  withCredentials: true,
+  withXSRFToken: true,
+  headers: {
+    'Accept': 'application/json',
+    'X-Requested-With': 'XMLHttpRequest',
+  },
+});
+
+let csrfReady = false;
+let csrfRequest: Promise<void> | null = null;
+
+export function ensureCsrfCookie(forceRefresh = false): Promise<void> {
+  if (forceRefresh) {
+    csrfReady = false;
+  }
+
+  if (csrfReady) {
+    return Promise.resolve();
+  }
+
+  if (!csrfRequest) {
+    csrfRequest = csrfClient
+      .get(CSRF_COOKIE_URL)
+      .then(() => {
+        csrfReady = true;
+      })
+      .finally(() => {
+        csrfRequest = null;
+      });
+  }
+
+  return csrfRequest;
+}
 
 export function getApiErrorMessage(error: unknown, fallback: string): string {
   if (isAxiosError(error)) {
@@ -34,16 +103,14 @@ export function getApiErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
-// Request interceptor to add auth token
 api.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('auth_token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    if (config.method && config.method.toLowerCase() !== 'get') {
+  async (config) => {
+    const method = config.method?.toLowerCase() ?? 'get';
+    if (!['get', 'head', 'options'].includes(method)) {
+      await ensureCsrfCookie();
       window.dispatchEvent(new CustomEvent('orvyn:sync-start'));
     }
+
     return config;
   },
   (error) => {
@@ -59,17 +126,18 @@ api.interceptors.response.use(
     }
     return response;
   },
-  (error) => {
+  async (error) => {
+    if (error.response?.status === 419 && error.config && !error.config._csrfRetried) {
+      error.config._csrfRetried = true;
+      await ensureCsrfCookie(true);
+      return api(error.config);
+    }
+
     if (error.config?.method && error.config.method.toLowerCase() !== 'get') {
       window.dispatchEvent(new CustomEvent('orvyn:sync-error'));
     }
     if (error.response?.status === 401) {
-      // Clear token and redirect to login
-      localStorage.removeItem('auth_token');
-      // Only redirect if we are not already on login page
-      if (window.location.pathname !== '/') {
-        window.location.href = '/';
-      }
+      window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
     }
     return Promise.reject(error);
   }
@@ -77,10 +145,59 @@ api.interceptors.response.use(
 
 // API methods
 export const authApi = {
-  demoLogin: () => {
-    return api.post('/auth/demo-login');
+  demoLogin: async () => {
+    await ensureCsrfCookie(true);
+    return api.post<ApiDataResponse<AuthLoginData>>('/auth/demo-login', undefined, {
+      headers: {
+        'X-Client-Platform': 'web',
+        'X-Device-Name': 'ORVYN Web',
+      },
+    });
   },
+  firebaseLogin: async (idToken: string) => {
+    await ensureCsrfCookie(true);
+    return api.post<ApiDataResponse<AuthLoginData>>('/auth/firebase', {
+      id_token: idToken,
+    }, {
+      headers: {
+        'X-Client-Platform': 'web',
+        'X-Device-Name': 'ORVYN Web',
+      },
+    });
+  },
+  logout: async () => {
+    const response = await api.post('/auth/logout');
+    csrfReady = false;
+    return response;
+  },
+  sessions: () => api.get<{ data: AuthSession[]; message: string }>('/auth/sessions'),
+  revokeSession: (id: number) => api.delete(`/auth/sessions/${id}`),
+  logoutAll: () => api.post('/auth/logout-all'),
 };
+
+export const userDataApi = {
+  exportData: () => api.get('/user/export', { responseType: 'blob' }),
+  deleteAccount: (confirmation: string, idToken: string) => api.delete('/user', {
+    data: {
+      confirmation,
+      id_token: idToken,
+    },
+  }),
+};
+
+export async function authorizeBroadcast(
+  endpoint: string,
+  socketId: string,
+  channelName: string,
+): Promise<BroadcastAuthorization> {
+  await ensureCsrfCookie();
+  const response = await api.post<BroadcastAuthorization>(endpoint, {
+    socket_id: socketId,
+    channel_name: channelName,
+  });
+
+  return response.data;
+}
 
 export const taskApi = {
   // Get all tasks
@@ -363,7 +480,7 @@ export const healthApi = {
 export const userApi = {
   // Get current logged-in user details
   me: () => {
-    return api.get('/user/me');
+    return api.get<ApiDataResponse<User>>('/user/me');
   },
 };
 
@@ -388,6 +505,10 @@ export const whatsappApi = {
     consent?: boolean;
   }) => api.patch('/integrations/whatsapp', data),
   connect: () => api.post('/integrations/whatsapp/connect'),
+  requestVerification: (data: { phone_number: string }) =>
+    api.post('/integrations/whatsapp/verification/request', data),
+  confirmVerification: (data: { code: string }) =>
+    api.post('/integrations/whatsapp/verification/confirm', data),
   sendTest: () => api.post('/integrations/whatsapp/test'),
 };
 

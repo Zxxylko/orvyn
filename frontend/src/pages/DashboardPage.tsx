@@ -15,12 +15,12 @@ import { getApiErrorMessage, timeBlockApi } from '@/lib/api';
 import type { FocusLog } from '@/types/analytics';
 import type { Habit } from '@/types/habit';
 import type { Task } from '@/types/task';
-import { Activity, AlertTriangle, ArrowDown, ArrowUp, BarChart3, Brain, CalendarCheck, CalendarDays, CheckCircle2, Circle, Edit2, Eye, EyeOff, Flame, GripVertical, Loader2, ListTodo, Plus, Settings2, Target, Trash2, Trophy, Zap } from 'lucide-react';
-import { Link } from 'react-router-dom';
-import { format, isPast, isSameDay, isToday, isTomorrow, subDays } from 'date-fns';
+import { Activity, AlertTriangle, ArrowDown, ArrowUp, BarChart3, Brain, CalendarCheck, CalendarDays, CheckCircle2, ChevronRight, Circle, Clock3, Edit2, Eye, EyeOff, Flame, GripVertical, Loader2, Plus, Settings2, Target, Trash2, Trophy, Zap } from 'lucide-react';
+import { Link } from '@/lib/router';
+import { differenceInCalendarDays, format, isPast, isSameDay, isToday, isTomorrow, subDays } from 'date-fns';
 import { toast } from 'sonner';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { MotionCollapse, ScrollReveal, StaggerGroup, StaggerItem } from '@/components/ui/motion';
+import { MotionCollapse, ScrollReveal } from '@/components/ui/motion';
 import { quietEase } from '@/components/ui/motion-config';
 
 type DashboardWidgetKey = 'stats' | 'daily' | 'assistant' | 'habits' | 'priority' | 'briefing' | 'timer' | 'trend' | 'streak' | 'flow' | 'burnout' | 'chronotype';
@@ -195,52 +195,15 @@ export function DashboardPage() {
 
       {/* Dynamic Statistics counters */}
       <DashboardWidget visible={widgetVisible('stats')} widgetKey="stats">
-      <StaggerGroup className="grid grid-cols-1 gap-4 md:grid-cols-3">
-        {/* Active tasks card */}
-        <StaggerItem><div className="reactive-card relative flex h-full items-center gap-4 overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-4 shadow-lg backdrop-blur-xl">
-          <div className="p-3 rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/15">
-            <ListTodo size={20} />
-          </div>
-          <div>
-            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest leading-none">
-              Tugas Aktif
-            </p>
-            <p className="text-2xl font-black text-white mt-1.5 leading-none">
-              {displayActiveCount}
-            </p>
-          </div>
-        </div></StaggerItem>
-
-        {/* Completed tasks card */}
-        <StaggerItem><div className="reactive-card relative flex h-full items-center gap-4 overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-4 shadow-lg backdrop-blur-xl">
-          <div className="p-3 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/15">
-            <CheckCircle2 size={20} />
-          </div>
-          <div>
-            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest leading-none">
-              Selesai Minggu Ini
-            </p>
-            <p className="text-2xl font-black text-white mt-1.5 leading-none">
-              {displayCompletedCount}
-            </p>
-          </div>
-        </div></StaggerItem>
-
-        {/* Focus Streak card */}
-        <StaggerItem><div className="reactive-card relative flex h-full items-center gap-4 overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-4 shadow-lg backdrop-blur-xl">
-          <div className="p-3 rounded-xl bg-pink-500/10 text-pink-400 border border-pink-500/15">
-            <Flame size={20} className="animate-pulse" />
-          </div>
-          <div>
-            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest leading-none">
-              Streak Fokus
-            </p>
-            <p className="text-2xl font-black text-white mt-1.5 leading-none">
-              {displayStreak} {displayStreak === 1 ? 'Hari' : 'Hari'}
-            </p>
-          </div>
-        </div></StaggerItem>
-      </StaggerGroup>
+        <DashboardPulse
+          activeTasks={activeTasks}
+          activeCount={displayActiveCount}
+          completedCount={displayCompletedCount}
+          streak={displayStreak}
+          focusMinutes={snapshot?.focus_minutes_this_week ?? 0}
+          onOpenTask={(task) => setSelectedTaskId(task.id)}
+          onAddTask={() => window.dispatchEvent(new CustomEvent('orvyn:focus-smart-task'))}
+        />
       </DashboardWidget>
 
       <DashboardWidget visible={widgetVisible('daily')} widgetKey="daily">
@@ -338,6 +301,226 @@ export function DashboardPage() {
         onDelete={deleteTask}
       />
     </div>
+  );
+}
+
+type PulseView = 'momentum' | 'urgency' | 'capacity';
+
+interface DashboardPulseProps {
+  activeTasks: Task[];
+  activeCount: number;
+  completedCount: number;
+  streak: number;
+  focusMinutes: number;
+  onOpenTask: (task: Task) => void;
+  onAddTask: () => void;
+}
+
+function DashboardPulse({
+  activeTasks,
+  activeCount,
+  completedCount,
+  streak,
+  focusMinutes,
+  onOpenTask,
+  onAddTask,
+}: DashboardPulseProps) {
+  const [view, setView] = useState<PulseView>('urgency');
+  const shouldReduceMotion = useReducedMotion();
+  const now = new Date();
+  const workloadMinutes = activeTasks.reduce((total, task) => total + Math.max(0, task.duration_minutes || 0), 0);
+  const totalTracked = activeCount + completedCount;
+  const completionRate = totalTracked > 0 ? Math.round((completedCount / totalTracked) * 100) : 0;
+  const overdueTasks = activeTasks.filter((task) => task.deadline && isPast(new Date(task.deadline)));
+  const dueSoonTasks = activeTasks.filter((task) => {
+    if (!task.deadline) return false;
+    const distance = new Date(task.deadline).getTime() - now.getTime();
+    return distance >= 0 && distance <= 48 * 60 * 60 * 1000;
+  });
+
+  const priorityWeight = { critical: 4, high: 3, medium: 2, low: 1 };
+  const byDeadline = (a: Task, b: Task) => {
+    const aDeadline = a.deadline ? new Date(a.deadline).getTime() : Number.MAX_SAFE_INTEGER;
+    const bDeadline = b.deadline ? new Date(b.deadline).getTime() : Number.MAX_SAFE_INTEGER;
+    return aDeadline - bDeadline || priorityWeight[b.priority] - priorityWeight[a.priority];
+  };
+  const visibleTasks = (view === 'urgency'
+    ? [...overdueTasks, ...dueSoonTasks.filter((task) => !overdueTasks.includes(task))].sort(byDeadline)
+    : view === 'momentum'
+      ? [...activeTasks].sort((a, b) => Number(b.status === 'in_progress') - Number(a.status === 'in_progress') || byDeadline(a, b))
+      : [...activeTasks].sort((a, b) => b.duration_minutes - a.duration_minutes || byDeadline(a, b)))
+    .slice(0, 4);
+
+  const views: Array<{
+    key: PulseView;
+    label: string;
+    value: string;
+    context: string;
+    icon: typeof Activity;
+  }> = [
+    {
+      key: 'momentum',
+      label: 'Momentum',
+      value: `${completionRate}%`,
+      context: `${completedCount} selesai minggu ini`,
+      icon: CheckCircle2,
+    },
+    {
+      key: 'urgency',
+      label: 'Perlu perhatian',
+      value: String(overdueTasks.length + dueSoonTasks.length),
+      context: overdueTasks.length > 0 ? `${overdueTasks.length} melewati deadline` : 'Deadline 48 jam ke depan',
+      icon: AlertTriangle,
+    },
+    {
+      key: 'capacity',
+      label: 'Beban tersisa',
+      value: workloadMinutes >= 60 ? `${Math.round(workloadMinutes / 60)}j` : `${workloadMinutes}m`,
+      context: `${activeCount} tugas aktif`,
+      icon: Clock3,
+    },
+  ];
+
+  const insight = view === 'urgency'
+    ? overdueTasks.length > 0
+      ? `Ada ${overdueTasks.length} tugas yang perlu dipulihkan lebih dulu.`
+      : dueSoonTasks.length > 0
+        ? `${dueSoonTasks.length} deadline masuk dalam 48 jam ke depan.`
+        : 'Tidak ada deadline mendesak. Ruang fokusmu cukup aman.'
+    : view === 'momentum'
+      ? completionRate >= 60
+        ? 'Progres minggu ini kuat. Pertahankan ritmenya dengan satu sesi kecil.'
+        : 'Selesaikan satu tugas berdampak tinggi untuk menaikkan momentum.'
+      : workloadMinutes > 480
+        ? 'Beban tersisa lebih dari satu hari fokus. Pecah menjadi beberapa blok.'
+        : 'Beban masih realistis untuk dibagi ke beberapa sesi fokus.';
+
+  return (
+    <section className="reactive-card overflow-hidden rounded-2xl border border-white/10 bg-white/[0.035] shadow-xl backdrop-blur-xl" aria-labelledby="dashboard-pulse-title">
+      <div className="flex flex-col gap-5 border-b border-white/10 p-5 lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0">
+          <div className="mb-2 flex items-center gap-2">
+            <span className="status-dot h-2 w-2 rounded-full bg-cyan-300 text-cyan-300" />
+            <span className="text-[10px] font-bold uppercase tracking-widest text-cyan-200">Pulse langsung</span>
+          </div>
+          <h2 id="dashboard-pulse-title" className="text-xl font-semibold tracking-tight text-white">Kondisi belajarmu hari ini</h2>
+          <p className="mt-1 max-w-2xl text-sm font-medium leading-relaxed text-slate-400">{insight}</p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+          <span className="rounded-full border border-white/10 bg-slate-950/40 px-3 py-1.5">{focusMinutes} menit fokus</span>
+          <span className="rounded-full border border-white/10 bg-slate-950/40 px-3 py-1.5">Streak {streak} hari</span>
+        </div>
+      </div>
+
+      <div className="grid lg:grid-cols-[minmax(0,1.1fr)_minmax(280px,0.9fr)]">
+        <div className="border-b border-white/10 p-4 lg:border-b-0 lg:border-r lg:p-5">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3" role="tablist" aria-label="Sudut pandang dashboard">
+            {views.map((item) => {
+              const Icon = item.icon;
+              const selected = view === item.key;
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  onClick={() => setView(item.key)}
+                  className={`focus-ring interactive-surface rounded-xl border p-3 text-left transition ${
+                    selected
+                      ? 'border-cyan-300/30 bg-cyan-300/10 text-white'
+                      : 'border-white/5 bg-slate-950/35 text-slate-300 hover:border-white/15 hover:bg-white/[0.055]'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <Icon className={`h-4 w-4 ${selected ? 'text-cyan-200' : 'text-slate-500'}`} />
+                    <span className="text-xl font-black tracking-tight text-white">{item.value}</span>
+                  </div>
+                  <p className="mt-3 text-[10px] font-bold uppercase tracking-widest">{item.label}</p>
+                  <p className={`mt-1 text-[10px] font-semibold normal-case tracking-normal ${selected ? 'text-cyan-100/70' : 'text-slate-600'}`}>{item.context}</p>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mt-5">
+            <div className="mb-2 flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-slate-500">
+              <span>Progres beban aktif</span>
+              <span className="text-slate-300">{completedCount}/{totalTracked || 0}</span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-slate-950/70" role="progressbar" aria-label="Progres tugas minggu ini" aria-valuemin={0} aria-valuemax={100} aria-valuenow={completionRate}>
+              <motion.div
+                className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-purple-400"
+                animate={{ width: `${completionRate}%` }}
+                transition={shouldReduceMotion ? { duration: 0 } : { duration: 0.45, ease: quietEase }}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="p-4 lg:p-5">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                {view === 'urgency' ? 'Antrian terdekat' : view === 'momentum' ? 'Penggerak progres' : 'Porsi terbesar'}
+              </p>
+              <p className="mt-1 text-xs font-semibold text-slate-300">Klik tugas untuk melihat detail dan mengambil aksi.</p>
+            </div>
+            <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-bold text-slate-400">{visibleTasks.length}</span>
+          </div>
+
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={view}
+              initial={shouldReduceMotion ? false : { opacity: 0, y: 5 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
+              transition={shouldReduceMotion ? { duration: 0 } : { duration: 0.18, ease: quietEase }}
+              className="space-y-1.5"
+            >
+              {visibleTasks.length > 0 ? visibleTasks.map((task) => {
+                const deadline = task.deadline ? new Date(task.deadline) : null;
+                const daysAway = deadline ? differenceInCalendarDays(deadline, now) : null;
+                const deadlineLabel = deadline
+                  ? daysAway !== null && daysAway < 0
+                    ? `${Math.abs(daysAway)} hari terlambat`
+                    : isToday(deadline)
+                      ? `Hari ini, ${format(deadline, 'HH:mm')}`
+                      : isTomorrow(deadline)
+                        ? `Besok, ${format(deadline, 'HH:mm')}`
+                        : format(deadline, 'd MMM, HH:mm')
+                  : 'Tanpa deadline';
+
+                return (
+                  <button
+                    key={task.id}
+                    type="button"
+                    onClick={() => onOpenTask(task)}
+                    className="focus-ring interactive-surface group flex w-full items-center gap-3 rounded-xl border border-transparent px-3 py-2.5 text-left hover:border-white/10 hover:bg-white/[0.045]"
+                  >
+                    <span className={`h-8 w-1 shrink-0 rounded-full ${task.priority === 'critical' ? 'bg-rose-400' : task.priority === 'high' ? 'bg-amber-300' : task.status === 'in_progress' ? 'bg-cyan-300' : 'bg-slate-600'}`} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-xs font-semibold text-white">{task.title}</span>
+                      <span className="mt-1 block text-[10px] font-semibold text-slate-500">{deadlineLabel} · {task.duration_minutes || 0} menit</span>
+                    </span>
+                    <ChevronRight className="h-4 w-4 shrink-0 text-slate-600 transition group-hover:translate-x-0.5 group-hover:text-cyan-300" />
+                  </button>
+                );
+              }) : (
+                <div className="flex min-h-36 flex-col items-center justify-center rounded-xl border border-dashed border-white/10 px-5 text-center">
+                  <CheckCircle2 className="mb-3 h-6 w-6 text-emerald-300" />
+                  <p className="text-sm font-semibold text-white">Area ini sudah bersih</p>
+                  <p className="mt-1 text-xs font-medium text-slate-500">Tambahkan tugas baru saat kamu siap.</p>
+                  <button type="button" onClick={onAddTask} className="focus-ring mt-3 inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-cyan-200 hover:bg-cyan-300/10">
+                    <Plus className="h-3.5 w-3.5" /> Tambah tugas
+                  </button>
+                </div>
+              )}
+            </motion.div>
+          </AnimatePresence>
+        </div>
+      </div>
+    </section>
   );
 }
 

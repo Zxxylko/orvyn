@@ -92,7 +92,7 @@ class TaskController extends Controller
             'input' => 'required|string|max:500',
         ]);
 
-        $parsed = $this->ai->parseTask($validated['input']);
+        $parsed = $this->ai->parseTask($validated['input'], $request->user());
 
         $parsed['status'] ??= 'pending';
         $task = Auth::user()->tasks()->create($parsed);

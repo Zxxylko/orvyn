@@ -2,10 +2,8 @@
 
 namespace App\Services;
 
-use App\Models\User;
-use App\Models\StudentProfile;
-use App\Models\FocusLog;
 use App\Models\AIMemory;
+use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 
@@ -15,7 +13,7 @@ class AnalyticsService
     private const CATEGORY_MULTIPLIERS = [
         'coding' => 1.35,
         'theory' => 1.20,
-        'admin'  => 1.00,
+        'admin' => 1.00,
     ];
 
     // ─── Difficulty Multipliers ───────────────────────────────────
@@ -28,23 +26,33 @@ class AnalyticsService
     ];
 
     // ─── Burnout Risk Index Weights ───────────────────────────────
-    private const BRI_WEIGHT_CLM       = 0.40;
-    private const BRI_WEIGHT_OVERDUE   = 0.25;
-    private const BRI_WEIGHT_REST      = 0.20;
-    private const BRI_WEIGHT_LATE      = 0.15;
-    private const BRI_CLM_MAX          = 18.0;
-    private const BRI_OVERDUE_MAX      = 5;
+    private const BRI_WEIGHT_CLM = 0.40;
+
+    private const BRI_WEIGHT_OVERDUE = 0.25;
+
+    private const BRI_WEIGHT_REST = 0.20;
+
+    private const BRI_WEIGHT_LATE = 0.15;
+
+    private const BRI_CLM_MAX = 18.0;
+
+    private const BRI_OVERDUE_MAX = 5;
 
     // ─── Flow State Score Weights ─────────────────────────────────
-    private const FSS_WEIGHT_FOCUS       = 0.40;
-    private const FSS_WEIGHT_INTEGRITY   = 0.35;
-    private const FSS_WEIGHT_STREAK      = 0.25;
+    private const FSS_WEIGHT_FOCUS = 0.40;
+
+    private const FSS_WEIGHT_INTEGRITY = 0.35;
+
+    private const FSS_WEIGHT_STREAK = 0.25;
 
     // ─── Cognitive Limits ─────────────────────────────────────────
     private const MAX_CONTINUOUS_FOCUS_MINUTES = 90;
-    private const RECHARGE_BREAK_MINUTES       = 20;
-    private const MIN_CODING_BLOCK_MINUTES     = 60;
-    private const DEFAULT_DAILY_FOCUS_CAP      = 300;
+
+    private const RECHARGE_BREAK_MINUTES = 20;
+
+    private const MIN_CODING_BLOCK_MINUTES = 60;
+
+    private const DEFAULT_DAILY_FOCUS_CAP = 300;
 
     // ═══════════════════════════════════════════════════════════════
     //  WORKLOAD ESTIMATION
@@ -88,7 +96,9 @@ class AnalyticsService
      */
     public function updateHcf(User $user, string $category, int $estimatedMinutes, int $actualMinutes): void
     {
-        if ($estimatedMinutes <= 0) return;
+        if ($estimatedMinutes <= 0) {
+            return;
+        }
 
         $profile = $user->getOrCreateProfile();
         $ratio = $actualMinutes / $estimatedMinutes;
@@ -104,8 +114,8 @@ class AnalyticsService
         $field = match ($category) {
             'coding' => 'coding_hcf',
             'theory' => 'theory_hcf',
-            'admin'  => 'admin_hcf',
-            default  => null,
+            'admin' => 'admin_hcf',
+            default => null,
         };
 
         if ($field) {
@@ -117,7 +127,7 @@ class AnalyticsService
                 'pattern',
                 "hcf_{$category}",
                 "Student's {$category} tasks typically take {$newHcf}x the estimated time.",
-                min(1.0, 0.3 + ($profile->fresh()->{$field . '_hcf'} ?? 0) * 0.1)
+                min(1.0, 0.3 + ($profile->fresh()->{$field.'_hcf'} ?? 0) * 0.1)
             );
         }
     }
@@ -209,8 +219,13 @@ class AnalyticsService
      */
     public function getBurnoutLevel(float $bri): string
     {
-        if ($bri > 0.75) return 'high';
-        if ($bri > 0.40) return 'medium';
+        if ($bri > 0.75) {
+            return 'high';
+        }
+        if ($bri > 0.40) {
+            return 'medium';
+        }
+
         return 'low';
     }
 
@@ -336,7 +351,7 @@ class AnalyticsService
 
         // Sort hours by score descending
         arsort($heatmap);
-        
+
         // Only select hours that have a non-zero productivity score, up to 4
         $peakHours = [];
         foreach ($heatmap as $hour => $score) {
@@ -371,7 +386,7 @@ class AnalyticsService
             $user->id,
             'pattern',
             'chronotype',
-            "Student appears to be a {$chronotype} with peak hours around " . implode(', ', $peakHours) . ".",
+            "Student appears to be a {$chronotype} with peak hours around ".implode(', ', $peakHours).'.',
             $confidence
         );
 

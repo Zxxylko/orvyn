@@ -7,12 +7,14 @@ use App\Services\AI\AIManager;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Queue\Attributes\DeleteWhenMissingModels;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
+#[DeleteWhenMissingModels]
 class GenerateEmbeddingJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
@@ -31,7 +33,7 @@ class GenerateEmbeddingJob implements ShouldQueue
     {
         $content = $this->task->title."\n".($this->task->description ?? '');
 
-        $embedding = $ai->generateEmbedding($content);
+        $embedding = $ai->generateEmbedding($content, $this->task->user);
 
         if ($embedding) {
             $storedEmbedding = json_encode(array_map(

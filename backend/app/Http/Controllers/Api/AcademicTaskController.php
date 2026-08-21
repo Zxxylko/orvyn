@@ -24,6 +24,18 @@ class AcademicTaskController extends Controller
     }
 
     /**
+     * Display a single academic task owned by the current user.
+     */
+    public function show(AcademicTask $academicTask)
+    {
+        $this->authorizeOwnership('view', $academicTask);
+
+        return response()->json([
+            'data' => $academicTask,
+        ]);
+    }
+
+    /**
      * Store a newly created academic task and mirror to scheduling tasks.
      */
     public function store(Request $request)
@@ -67,8 +79,8 @@ class AcademicTaskController extends Controller
 
         // Create mirrored task
         $mirroredTask = $user->tasks()->create([
-            'title' => "[" . $validated['course_name'] . "] " . $validated['title'],
-            'description' => ($validated['description'] ?? '') . "\n\nSynced from Tel-U Academic Tracker. LMS: " . ($validated['lms_url'] ?? 'Not provided'),
+            'title' => '['.$validated['course_name'].'] '.$validated['title'],
+            'description' => ($validated['description'] ?? '')."\n\nSynced from Tel-U Academic Tracker. LMS: ".($validated['lms_url'] ?? 'Not provided'),
             'deadline' => $validated['deadline'] ?? null,
             'priority' => $priority,
             'duration_minutes' => $duration,
@@ -105,18 +117,18 @@ class AcademicTaskController extends Controller
             'lms_url' => 'nullable|url',
         ]);
 
-        $oldTitle = "[" . $academicTask->course_name . "] " . $academicTask->title;
+        $oldTitle = '['.$academicTask->course_name.'] '.$academicTask->title;
         $academicTask->update($validated);
 
         // Update mirrored task if status or details changed
         $user = Auth::user();
-        $mirrored = $academicTask->mirrored_task_id 
+        $mirrored = $academicTask->mirrored_task_id
             ? $user->tasks()->where('id', $academicTask->mirrored_task_id)->first()
             : $user->tasks()->where('title', $oldTitle)->first();
 
         if ($mirrored) {
             // Update mirrored_task_id on academicTask if it was empty (legacy upgrade)
-            if (!$academicTask->mirrored_task_id) {
+            if (! $academicTask->mirrored_task_id) {
                 $academicTask->update(['mirrored_task_id' => $mirrored->id]);
             }
 
@@ -124,7 +136,7 @@ class AcademicTaskController extends Controller
             if (isset($validated['title']) || isset($validated['course_name'])) {
                 $cName = $validated['course_name'] ?? $academicTask->course_name;
                 $tTitle = $validated['title'] ?? $academicTask->title;
-                $updateData['title'] = "[" . $cName . "] " . $tTitle;
+                $updateData['title'] = '['.$cName.'] '.$tTitle;
             }
             if (isset($validated['deadline'])) {
                 $updateData['deadline'] = $validated['deadline'];
@@ -138,7 +150,7 @@ class AcademicTaskController extends Controller
             if (isset($validated['description']) || isset($validated['lms_url'])) {
                 $desc = $validated['description'] ?? $academicTask->description;
                 $url = $validated['lms_url'] ?? $academicTask->lms_url;
-                $updateData['description'] = ($desc ?? '') . "\n\nSynced from Tel-U Academic Tracker. LMS: " . ($url ?? 'Not provided');
+                $updateData['description'] = ($desc ?? '')."\n\nSynced from Tel-U Academic Tracker. LMS: ".($url ?? 'Not provided');
             }
 
             $mirrored->update($updateData);
@@ -158,7 +170,7 @@ class AcademicTaskController extends Controller
         $this->authorizeOwnership('delete', $academicTask);
 
         $user = Auth::user();
-        $oldTitle = "[" . $academicTask->course_name . "] " . $academicTask->title;
+        $oldTitle = '['.$academicTask->course_name.'] '.$academicTask->title;
 
         // Delete mirrored task
         if ($academicTask->mirrored_task_id) {

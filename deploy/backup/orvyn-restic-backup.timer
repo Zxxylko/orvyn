@@ -1,0 +1,11 @@
+[Unit]
+Description=Run ORVYN encrypted offsite backup daily
+
+[Timer]
+OnCalendar=*-*-* 02:15:00
+RandomizedDelaySec=30m
+Persistent=true
+Unit=orvyn-restic-backup.service
+
+[Install]
+WantedBy=timers.target

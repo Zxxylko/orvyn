@@ -111,6 +111,16 @@ class User extends Authenticatable
         return $this->hasMany(NotificationDelivery::class);
     }
 
+    public function devicePushTokens(): HasMany
+    {
+        return $this->hasMany(DevicePushToken::class);
+    }
+
+    public function pushNotificationPreference(): HasOne
+    {
+        return $this->hasOne(PushNotificationPreference::class);
+    }
+
     /**
      * Get or create the student's analytics profile.
      */
@@ -131,5 +141,10 @@ class User extends Authenticatable
         $this->setRelation('studentProfile', $profile);
 
         return $profile;
+    }
+
+    public function allowsCloudAI(): bool
+    {
+        return (bool) data_get($this->preferences, 'ai_cloud_processing_consent', false);
     }
 }

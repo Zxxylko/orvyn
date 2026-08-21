@@ -14,8 +14,13 @@ class WhatsAppWebhookController extends Controller
     {
         $secret = (string) config('whatsapp.webhook_secret');
         $signature = (string) $request->header('X-Orvyn-Signature');
-        $expected = hash_hmac('sha256', $request->getContent(), $secret);
-        if ($secret === '' || ! hash_equals($expected, $signature)) {
+        $timestamp = (string) $request->header('X-Orvyn-Timestamp');
+        $maxAge = max(30, (int) config('whatsapp.webhook_max_age_seconds', 300));
+        $timestampValue = ctype_digit($timestamp) ? (int) $timestamp : 0;
+        $isFresh = $timestampValue > 0 && abs(now()->timestamp - $timestampValue) <= $maxAge;
+        $expected = hash_hmac('sha256', $timestamp.'.'.$request->getContent(), $secret);
+
+        if ($secret === '' || ! $isFresh || ! hash_equals($expected, $signature)) {
             abort(401, 'Invalid webhook signature.');
         }
 
@@ -26,7 +31,11 @@ class WhatsAppWebhookController extends Controller
             'received_at' => 'nullable|date',
         ]);
         $phone = WhatsAppConnection::normalizePhone($validated['phone']);
-        $connection = WhatsAppConnection::with('user')->where('phone_number', $phone)->where('enabled', true)->first();
+        $connection = WhatsAppConnection::with('user')
+            ->where('phone_number', $phone)
+            ->where('enabled', true)
+            ->whereNotNull('phone_verified_at')
+            ->first();
         if (! $connection) {
             return response()->json(['reply' => null, 'ignored' => true]);
         }

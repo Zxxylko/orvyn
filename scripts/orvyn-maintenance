@@ -1,0 +1,472 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+BACKEND_DIR="$ROOT_DIR/backend"
+STATE_DIR="$ROOT_DIR/.orvyn"
+BACKUP_DIR="$STATE_DIR/backups"
+TEMP_DIR="$STATE_DIR/tmp"
+TEMP_DB_CONFIG=""
+TEMP_PGPASS=""
+
+umask 077
+
+usage() {
+  cat <<'USAGE'
+ORVYN maintenance
+
+Usage:
+  ./scripts/orvyn-maintenance status
+  ./scripts/orvyn-maintenance backup [--output-dir PATH]
+  ./scripts/orvyn-maintenance prune-failed [--hours HOURS] [--execute]
+
+Commands:
+  status        Tampilkan status layanan, database, failed jobs, dan backup.
+  backup        Buat backup konsisten untuk SQLite atau PostgreSQL.
+  prune-failed  Simulasikan penghapusan failed jobs. Data baru dihapus jika
+                opsi --execute diberikan secara eksplisit.
+
+Defaults:
+  Backup disimpan di .orvyn/backups (diabaikan Git).
+  Failed jobs dipertahankan selama 168 jam (7 hari).
+USAGE
+}
+
+fail() {
+  echo "✗ $*" >&2
+  exit 1
+}
+
+warn() {
+  echo "⚠ $*" >&2
+}
+
+cleanup() {
+  [[ -z "$TEMP_DB_CONFIG" ]] || rm -f "$TEMP_DB_CONFIG"
+  [[ -z "$TEMP_PGPASS" ]] || rm -f "$TEMP_PGPASS"
+}
+
+trap cleanup EXIT
+
+require_backend() {
+  [[ -f "$BACKEND_DIR/artisan" ]] || fail "Backend Laravel tidak ditemukan di $BACKEND_DIR."
+  [[ -f "$BACKEND_DIR/vendor/autoload.php" ]] || fail "Dependency backend belum terpasang. Jalankan Composer install terlebih dahulu."
+}
+
+create_database_config_snapshot() {
+  require_backend
+  mkdir -p "$TEMP_DIR"
+  chmod 700 "$STATE_DIR" "$TEMP_DIR" 2>/dev/null || true
+
+  TEMP_DB_CONFIG="$(mktemp "$TEMP_DIR/database-config.XXXXXX")"
+  chmod 600 "$TEMP_DB_CONFIG"
+
+  (
+    cd "$BACKEND_DIR"
+    php -r '
+        $output = $argv[1];
+        require "vendor/autoload.php";
+        $app = require "bootstrap/app.php";
+        $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
+        $kernel->bootstrap();
+
+        $name = (string) config("database.default");
+        $connection = (array) config("database.connections.".$name, []);
+        $url = $connection["url"] ?? null;
+
+        if (is_string($url) && $url !== "") {
+            $parts = parse_url($url);
+            if ($parts !== false) {
+                $connection["host"] = isset($parts["host"]) ? rawurldecode($parts["host"]) : ($connection["host"] ?? "");
+                $connection["port"] = $parts["port"] ?? ($connection["port"] ?? "");
+                $connection["database"] = isset($parts["path"]) ? rawurldecode(ltrim($parts["path"], "/")) : ($connection["database"] ?? "");
+                $connection["username"] = isset($parts["user"]) ? rawurldecode($parts["user"]) : ($connection["username"] ?? "");
+                $connection["password"] = isset($parts["pass"]) ? rawurldecode($parts["pass"]) : ($connection["password"] ?? "");
+
+                if (isset($parts["query"])) {
+                    parse_str($parts["query"], $query);
+                    $connection["sslmode"] = $query["sslmode"] ?? ($connection["sslmode"] ?? "");
+                }
+            }
+        }
+
+        $payload = [
+            "name" => $name,
+            "driver" => (string) ($connection["driver"] ?? $name),
+            "host" => (string) ($connection["host"] ?? ""),
+            "port" => (string) ($connection["port"] ?? ""),
+            "database" => (string) ($connection["database"] ?? ""),
+            "username" => (string) ($connection["username"] ?? ""),
+            "password" => (string) ($connection["password"] ?? ""),
+            "sslmode" => (string) ($connection["sslmode"] ?? ""),
+        ];
+
+        $json = json_encode($payload, JSON_THROW_ON_ERROR);
+        if (file_put_contents($output, $json, LOCK_EX) === false) {
+            fwrite(STDERR, "Tidak dapat menulis snapshot konfigurasi database.\n");
+            exit(1);
+        }
+        chmod($output, 0600);
+    ' "$TEMP_DB_CONFIG"
+  ) || return 1
+}
+
+database_config_value() {
+  local key="$1"
+  php -r '
+      $config = json_decode(file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR);
+      echo isset($config[$argv[2]]) ? (string) $config[$argv[2]] : "";
+  ' "$TEMP_DB_CONFIG" "$key"
+}
+
+load_database_config() {
+  create_database_config_snapshot || return 1
+  DB_DRIVER="$(database_config_value driver)" || return 1
+  DB_HOST_VALUE="$(database_config_value host)" || return 1
+  DB_PORT_VALUE="$(database_config_value port)" || return 1
+  DB_NAME_VALUE="$(database_config_value database)" || return 1
+  DB_USERNAME_VALUE="$(database_config_value username)" || return 1
+  DB_PASSWORD_VALUE="$(database_config_value password)" || return 1
+  DB_SSLMODE_VALUE="$(database_config_value sslmode)" || return 1
+}
+
+prepare_output_directory() {
+  local requested="$1"
+  local relative
+
+  mkdir -p "$requested"
+  chmod 700 "$requested" 2>/dev/null || true
+  OUTPUT_DIRECTORY="$(cd "$requested" && pwd -P)"
+
+  case "$OUTPUT_DIRECTORY" in
+    "$ROOT_DIR")
+      fail "Direktori root proyek tidak boleh dipakai untuk menyimpan backup."
+      ;;
+    "$ROOT_DIR"/*)
+      relative="${OUTPUT_DIRECTORY#"$ROOT_DIR"/}"
+      if ! git -C "$ROOT_DIR" check-ignore -q -- "$relative"; then
+        fail "Direktori backup berada di repo tetapi tidak diabaikan Git: $relative"
+      fi
+      ;;
+  esac
+}
+
+safe_database_label() {
+  local label
+  label="$(printf '%s' "$1" | tr -cs '[:alnum:]._-' '_' | sed 's/^_*//; s/_*$//')"
+  printf '%s' "${label:-database}"
+}
+
+write_checksum() {
+  local backup_path="$1"
+  local directory filename checksum_path
+  directory="$(dirname "$backup_path")"
+  filename="$(basename "$backup_path")"
+  checksum_path="$backup_path.sha256"
+
+  if command -v sha256sum >/dev/null 2>&1; then
+    (cd "$directory" && sha256sum "$filename" > "$(basename "$checksum_path")")
+  elif command -v shasum >/dev/null 2>&1; then
+    (cd "$directory" && shasum -a 256 "$filename" > "$(basename "$checksum_path")")
+  else
+    warn "Checksum tidak dibuat karena sha256sum/shasum tidak tersedia."
+    return
+  fi
+
+  chmod 600 "$checksum_path"
+}
+
+backup_sqlite() {
+  local source_path="$DB_NAME_VALUE"
+  local backup_path="$1"
+
+  [[ "$source_path" != ":memory:" ]] || fail "Database SQLite in-memory tidak dapat dibackup."
+  if [[ "$source_path" != /* ]]; then
+    source_path="$BACKEND_DIR/$source_path"
+  fi
+
+  [[ -f "$source_path" ]] || fail "File database SQLite tidak ditemukan: $source_path"
+  command -v sqlite3 >/dev/null 2>&1 || fail "sqlite3 diperlukan untuk membuat backup SQLite yang konsisten."
+
+  case "$backup_path" in
+    *\"*|*$'\n'*)
+      fail "Path backup SQLite tidak boleh mengandung tanda kutip ganda atau baris baru."
+      ;;
+  esac
+
+  sqlite3 "$source_path" ".timeout 10000" ".backup \"$backup_path\""
+  chmod 600 "$backup_path"
+}
+
+escape_pgpass_value() {
+  local value="$1"
+  value="${value//\\/\\\\}"
+  value="${value//:/\\:}"
+  printf '%s' "$value"
+}
+
+backup_postgresql() {
+  local backup_path="$1"
+  local host="${DB_HOST_VALUE:-127.0.0.1}"
+  local port="${DB_PORT_VALUE:-5432}"
+  local sslmode="${DB_SSLMODE_VALUE:-prefer}"
+
+  command -v pg_dump >/dev/null 2>&1 || fail "pg_dump diperlukan untuk membuat backup PostgreSQL."
+  [[ -n "$DB_NAME_VALUE" ]] || fail "Nama database PostgreSQL belum dikonfigurasi."
+  [[ -n "$DB_USERNAME_VALUE" ]] || fail "Username database PostgreSQL belum dikonfigurasi."
+
+  TEMP_PGPASS="$(mktemp "$TEMP_DIR/pgpass.XXXXXX")"
+  chmod 600 "$TEMP_PGPASS"
+  printf '%s:%s:%s:%s:%s\n' \
+    "$(escape_pgpass_value "$host")" \
+    "$(escape_pgpass_value "$port")" \
+    "$(escape_pgpass_value "$DB_NAME_VALUE")" \
+    "$(escape_pgpass_value "$DB_USERNAME_VALUE")" \
+    "$(escape_pgpass_value "$DB_PASSWORD_VALUE")" \
+    > "$TEMP_PGPASS"
+
+  PGPASSFILE="$TEMP_PGPASS" PGSSLMODE="$sslmode" pg_dump \
+    --host="$host" \
+    --port="$port" \
+    --username="$DB_USERNAME_VALUE" \
+    --dbname="$DB_NAME_VALUE" \
+    --format=custom \
+    --no-owner \
+    --no-acl \
+    --no-password \
+    --file="$backup_path"
+
+  chmod 600 "$backup_path"
+}
+
+backup_database() {
+  local output_dir="$BACKUP_DIR"
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --output-dir)
+        [[ $# -ge 2 ]] || fail "--output-dir membutuhkan path."
+        output_dir="$2"
+        shift 2
+        ;;
+      --output-dir=*)
+        output_dir="${1#*=}"
+        shift
+        ;;
+      -h|--help)
+        usage
+        return
+        ;;
+      *)
+        fail "Opsi backup tidak dikenal: $1"
+        ;;
+    esac
+  done
+
+  prepare_output_directory "$output_dir"
+  load_database_config
+
+  local timestamp label extension backup_path
+  timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+  label="$(safe_database_label "$DB_NAME_VALUE")"
+
+  case "$DB_DRIVER" in
+    sqlite)
+      extension="sqlite"
+      ;;
+    pgsql|postgres|postgresql)
+      extension="dump"
+      ;;
+    *)
+      fail "Driver database belum didukung untuk backup otomatis: $DB_DRIVER"
+      ;;
+  esac
+
+  backup_path="$OUTPUT_DIRECTORY/orvyn-${DB_DRIVER}-${label}-${timestamp}-$$.$extension"
+
+  case "$DB_DRIVER" in
+    sqlite)
+      backup_sqlite "$backup_path"
+      ;;
+    pgsql|postgres|postgresql)
+      backup_postgresql "$backup_path"
+      ;;
+  esac
+
+  write_checksum "$backup_path"
+
+  echo "✓ Backup database selesai."
+  echo "  Driver : $DB_DRIVER"
+  echo "  File   : $backup_path"
+  [[ ! -f "$backup_path.sha256" ]] || echo "  SHA-256: $backup_path.sha256"
+}
+
+failed_jobs_json() {
+  (
+    cd "$BACKEND_DIR"
+    php artisan queue:failed --json --no-interaction
+  )
+}
+
+failed_jobs_summary() {
+  local hours="$1"
+  php -r '
+      $hours = (int) $argv[1];
+      $jobs = json_decode(stream_get_contents(STDIN), true, 512, JSON_THROW_ON_ERROR);
+      $cutoff = time() - ($hours * 3600);
+      $eligible = 0;
+      $oldest = null;
+
+      foreach ($jobs as $job) {
+          $failedAt = isset($job["failed_at"]) ? strtotime((string) $job["failed_at"]) : false;
+          if ($failedAt !== false) {
+              $oldest = $oldest === null ? $failedAt : min($oldest, $failedAt);
+              if ($failedAt < $cutoff) {
+                  $eligible++;
+              }
+          }
+      }
+
+      echo count($jobs), "\t", $eligible, "\t", ($oldest === null ? "-" : date(DATE_ATOM, $oldest));
+  ' "$hours"
+}
+
+prune_failed_jobs() {
+  local hours=168
+  local execute=false
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --hours)
+        [[ $# -ge 2 ]] || fail "--hours membutuhkan angka."
+        hours="$2"
+        shift 2
+        ;;
+      --hours=*)
+        hours="${1#*=}"
+        shift
+        ;;
+      --execute)
+        execute=true
+        shift
+        ;;
+      --dry-run)
+        execute=false
+        shift
+        ;;
+      -h|--help)
+        usage
+        return
+        ;;
+      *)
+        fail "Opsi prune-failed tidak dikenal: $1"
+        ;;
+    esac
+  done
+
+  [[ "$hours" =~ ^[0-9]+$ ]] || fail "--hours harus berupa bilangan bulat."
+  (( hours >= 1 && hours <= 87600 )) || fail "--hours harus berada di antara 1 dan 87600."
+  require_backend
+
+  local jobs summary total eligible oldest
+  jobs="$(failed_jobs_json)"
+  summary="$(printf '%s' "$jobs" | failed_jobs_summary "$hours")"
+  IFS=$'\t' read -r total eligible oldest <<< "$summary"
+
+  echo "ORVYN failed jobs"
+  echo "  Total                : $total"
+  echo "  Lebih lama dari ${hours}j : $eligible"
+  echo "  Failed job tertua    : $oldest"
+
+  if [[ "$execute" != "true" ]]; then
+    echo
+    echo "Dry-run: tidak ada data yang dihapus."
+    echo "Tambahkan --execute untuk menghapus $eligible failed job yang memenuhi batas usia."
+    return
+  fi
+
+  if [[ "$eligible" -eq 0 ]]; then
+    echo "✓ Tidak ada failed job yang perlu dihapus."
+    return
+  fi
+
+  (
+    cd "$BACKEND_DIR"
+    php artisan queue:prune-failed --hours="$hours" --no-interaction
+  )
+  echo "✓ Prune selesai. Failed job yang lebih baru tetap dipertahankan."
+}
+
+maintenance_status() {
+  "$ROOT_DIR/scripts/orvyn" status
+
+  echo
+  echo "Maintenance"
+
+  if [[ -f "$BACKEND_DIR/vendor/autoload.php" ]]; then
+    if load_database_config; then
+      case "$DB_DRIVER" in
+        sqlite)
+          printf '  %-18s %s\n' "Database" "SQLite ($DB_NAME_VALUE)"
+          ;;
+        pgsql|postgres|postgresql)
+          printf '  %-18s %s\n' "Database" "PostgreSQL (${DB_HOST_VALUE:-127.0.0.1}:${DB_PORT_VALUE:-5432}/$DB_NAME_VALUE)"
+          ;;
+        *)
+          printf '  %-18s %s\n' "Database" "$DB_DRIVER"
+          ;;
+      esac
+    else
+      warn "Konfigurasi database tidak dapat dibaca."
+    fi
+
+    local jobs total
+    if jobs="$(failed_jobs_json 2>/dev/null)"; then
+      total="$(printf '%s' "$jobs" | php -r '$jobs = json_decode(stream_get_contents(STDIN), true); echo is_array($jobs) ? count($jobs) : 0;')"
+      printf '  %-18s %s\n' "Failed jobs" "$total"
+    else
+      printf '  %-18s %s\n' "Failed jobs" "tidak dapat dibaca"
+    fi
+  else
+    printf '  %-18s %s\n' "Database" "dependency backend belum terpasang"
+    printf '  %-18s %s\n' "Failed jobs" "tidak dapat dibaca"
+  fi
+
+  local backups=()
+  if [[ -d "$BACKUP_DIR" ]]; then
+    shopt -s nullglob
+    backups=("$BACKUP_DIR"/*.sqlite "$BACKUP_DIR"/*.dump)
+    shopt -u nullglob
+  fi
+
+  if [[ ${#backups[@]} -eq 0 ]]; then
+    printf '  %-18s %s\n' "Backup lokal" "belum ada"
+  else
+    local latest
+    latest="$(ls -1t "${backups[@]}" | head -n 1)"
+    printf '  %-18s %s\n' "Backup terbaru" "$latest"
+  fi
+}
+
+command="${1:-status}"
+shift || true
+
+case "$command" in
+  status)
+    maintenance_status
+    ;;
+  backup)
+    backup_database "$@"
+    ;;
+  prune-failed)
+    prune_failed_jobs "$@"
+    ;;
+  help|-h|--help)
+    usage
+    ;;
+  *)
+    usage >&2
+    exit 1
+    ;;
+esac

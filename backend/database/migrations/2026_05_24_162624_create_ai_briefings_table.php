@@ -19,7 +19,7 @@ return new class extends Migration
             $table->json('health_metrics')->nullable();
             $table->json('recommended_adjustments')->nullable();
             $table->timestamps();
-            
+
             $table->unique(['user_id', 'briefing_date']);
         });
     }

@@ -9,6 +9,10 @@ Schedule::command('notifications:dispatch-whatsapp')
     ->everyMinute()
     ->withoutOverlapping();
 
+Schedule::command('notifications:dispatch-push')
+    ->everyMinute()
+    ->withoutOverlapping();
+
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');

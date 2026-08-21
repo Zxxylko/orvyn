@@ -57,6 +57,7 @@ class AIMemory extends Model
                 'confidence' => $newConfidence,
                 'reinforcement_count' => $memory->reinforcement_count + 1,
             ]);
+
             return $memory;
         }
 

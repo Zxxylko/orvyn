@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from '@/lib/router-hooks';
 import { format } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
 import { useAuth } from '@/contexts/auth';
@@ -12,10 +12,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { taskApi } from '@/lib/api';
+import { getApiErrorMessage, taskApi } from '@/lib/api';
 import type { Task } from '@/types/task';
 import { useSyncStatus } from '@/hooks/useSyncStatus';
 import { WhatsAppSettingsDialog } from '@/components/settings/WhatsAppSettingsDialog';
+import { AccountSecurityDialog } from '@/components/settings/AccountSecurityDialog';
+import { toast } from 'sonner';
 
 interface HeaderProps {
   onOpenCommandPalette: () => void;
@@ -30,7 +32,16 @@ export function Header({ onOpenCommandPalette, onOpenOnboarding }: HeaderProps) 
   const [isOnline, setIsOnline] = useState(() => navigator.onLine);
   const [taskAlerts, setTaskAlerts] = useState<Array<{ title: string; detail: string }>>([]);
   const [whatsappSettingsOpen, setWhatsAppSettingsOpen] = useState(false);
+  const [accountSettingsOpen, setAccountSettingsOpen] = useState(false);
   const syncState = useSyncStatus();
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, 'Sesi belum dapat diakhiri. Coba lagi.'));
+    }
+  };
 
   // Get dynamic title based on path
   const getPageTitle = () => {
@@ -270,21 +281,27 @@ export function Header({ onOpenCommandPalette, onOpenOnboarding }: HeaderProps) 
             <DropdownMenuContent align="end" className="w-56 bg-slate-900 border border-white/15 text-white">
               <DropdownMenuLabel className="font-semibold text-slate-300">Akun Saya</DropdownMenuLabel>
               <DropdownMenuSeparator className="bg-white/10" />
-              <DropdownMenuItem className="text-xs py-2 text-slate-200 focus:bg-white/10 focus:text-white cursor-pointer">
+              <DropdownMenuItem
+                onSelect={() => setAccountSettingsOpen(true)}
+                className="text-xs py-2 text-slate-200 focus:bg-white/10 focus:text-white cursor-pointer"
+              >
                 Profil
               </DropdownMenuItem>
-              <DropdownMenuItem className="text-xs py-2 text-slate-200 focus:bg-white/10 focus:text-white cursor-pointer">
+              <DropdownMenuItem
+                onSelect={() => navigate('/calendar')}
+                className="text-xs py-2 text-slate-200 focus:bg-white/10 focus:text-white cursor-pointer"
+              >
                 Sinkron Jadwal
               </DropdownMenuItem>
               <DropdownMenuItem
                 onSelect={() => setWhatsAppSettingsOpen(true)}
                 className="text-xs py-2 text-slate-200 focus:bg-white/10 focus:text-white cursor-pointer"
               >
-                Preferensi Sistem
+                WhatsApp
               </DropdownMenuItem>
               <DropdownMenuSeparator className="bg-white/10" />
-              <DropdownMenuItem 
-                onClick={logout}
+              <DropdownMenuItem
+                onSelect={() => void handleLogout()}
                 className="text-xs py-2 text-rose-400 focus:bg-rose-500/10 focus:text-rose-400 cursor-pointer"
               >
                 Keluar
@@ -294,6 +311,7 @@ export function Header({ onOpenCommandPalette, onOpenOnboarding }: HeaderProps) 
         )}
       </div>
       <WhatsAppSettingsDialog open={whatsappSettingsOpen} onOpenChange={setWhatsAppSettingsOpen} />
+      <AccountSecurityDialog open={accountSettingsOpen} onOpenChange={setAccountSettingsOpen} />
     </header>
   );
 }

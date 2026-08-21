@@ -1,0 +1,9 @@
+*
+!deploy/
+deploy/*
+!deploy/docker/
+deploy/docker/*
+!deploy/docker/backup.Dockerfile
+!deploy/scripts/
+deploy/scripts/*
+!deploy/scripts/compose-backup.sh

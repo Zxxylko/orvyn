@@ -2,6 +2,8 @@
 
 return [
     'provider' => env('AI_PROVIDER', 'ollama'),
+    'cloud_fallback_enabled' => env('AI_CLOUD_FALLBACK_ENABLED', false),
+    'cloud_requires_user_consent' => env('AI_CLOUD_REQUIRES_USER_CONSENT', true),
 
     'ollama' => [
         'base_url' => rtrim(env('OLLAMA_BASE_URL', 'http://127.0.0.1:11434'), '/'),

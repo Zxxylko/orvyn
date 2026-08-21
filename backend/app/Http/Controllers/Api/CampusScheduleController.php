@@ -126,7 +126,9 @@ class CampusScheduleController extends Controller
     private function notifyChange(CampusSchedule $schedule, string $action): void
     {
         $user = Auth::user();
-        if (! $user->whatsappConnection?->enabled || ! $user->whatsappConnection->featureEnabled('campus_updates')) {
+        if (! $user->whatsappConnection?->enabled
+            || ! $user->whatsappConnection->phone_verified_at
+            || ! $user->whatsappConnection->featureEnabled('campus_updates')) {
             return;
         }
 

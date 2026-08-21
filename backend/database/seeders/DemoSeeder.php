@@ -2,7 +2,6 @@
 
 namespace Database\Seeders;
 
-use App\Models\Task;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Str;
@@ -19,7 +18,7 @@ class DemoSeeder extends Seeder
             ['email' => 'demo@orvyn.app'],
             [
                 'id' => Str::uuid(),
-                'firebase_uid' => 'demo_' . Str::random(20),
+                'firebase_uid' => 'demo_'.Str::random(20),
                 'name' => 'Demo Student',
                 'email_verified_at' => now(),
                 'preferences' => [
@@ -100,9 +99,9 @@ class DemoSeeder extends Seeder
 
         $this->command->info('Demo data seeded successfully!');
         $this->command->info('Demo User Email: demo@orvyn.app');
-        $this->command->info('API Token: ' . $token);
+        $this->command->info('API Token: '.$token);
         $this->command->info('');
         $this->command->info('Test the API:');
-        $this->command->info('curl -H "Authorization: Bearer ' . $token . '" http://localhost:8000/api/v1/tasks');
+        $this->command->info('curl -H "Authorization: Bearer '.$token.'" http://localhost:8000/api/v1/tasks');
     }
 }

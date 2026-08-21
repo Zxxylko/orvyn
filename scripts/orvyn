@@ -1,0 +1,344 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+umask 077
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+STATE_DIR="$ROOT_DIR/.orvyn"
+PID_DIR="$STATE_DIR/pids"
+LOG_DIR="$STATE_DIR/logs"
+
+mkdir -p "$PID_DIR" "$LOG_DIR"
+chmod 700 "$STATE_DIR" "$PID_DIR" "$LOG_DIR"
+
+usage() {
+  cat <<'USAGE'
+ORVYN local service manager
+
+Usage:
+  ./scripts/orvyn start [--with-expo] [--with-whatsapp] [--lan]
+  ./scripts/orvyn stop
+  ./scripts/orvyn restart [--with-expo] [--with-whatsapp] [--lan]
+  ./scripts/orvyn status
+  ./scripts/orvyn logs [service]
+
+Services:
+  backend, queue, scheduler, reverb, whatsapp, frontend, expo
+USAGE
+}
+
+port_open() {
+  nc -z 127.0.0.1 "$1" >/dev/null 2>&1
+}
+
+pid_running() {
+  local name="$1"
+  local pid_file="$PID_DIR/$name.pid"
+
+  if command -v tmux >/dev/null 2>&1 && tmux has-session -t "orvyn-$name" 2>/dev/null; then
+    return 0
+  fi
+
+  [[ -f "$pid_file" ]] && kill -0 "$(cat "$pid_file")" >/dev/null 2>&1
+}
+
+start_process() {
+  local name="$1"
+  local directory="$2"
+  shift 2
+
+  if pid_running "$name"; then
+    echo "✓ $name sudah berjalan"
+    return
+  fi
+
+  local log_file="$LOG_DIR/$name.log"
+  if [[ -f "$log_file" ]]; then
+    chmod 600 "$log_file"
+  fi
+
+  if command -v tmux >/dev/null 2>&1; then
+    local command_string="" argument escaped log_path logger_path
+    for argument in "$@"; do
+      printf -v escaped '%q' "$argument"
+      command_string+="$escaped "
+    done
+    printf -v log_path '%q' "$log_file"
+
+    rm -f "$PID_DIR/$name.pid"
+    if command -v rotatelogs >/dev/null 2>&1; then
+      printf -v logger_path '%q' "$(command -v rotatelogs)"
+      tmux new-session -d -s "orvyn-$name" -c "$directory" \
+        "umask 077; $command_string 2>&1 | $logger_path -n 5 -f $log_path 10M"
+    else
+      tmux new-session -d -s "orvyn-$name" -c "$directory" "umask 077; $command_string >$log_path 2>&1"
+    fi
+  else
+    if [[ -f "$log_file" ]] && [[ "$(wc -c < "$log_file")" -gt 10485760 ]]; then
+      mv "$log_file" "$log_file.previous"
+      chmod 600 "$log_file.previous"
+    fi
+    (
+      cd "$directory"
+      nohup "$@" >"$log_file" 2>&1 &
+      echo "$!" >"$PID_DIR/$name.pid"
+    )
+  fi
+
+  sleep 1
+  if pid_running "$name"; then
+    echo "✓ $name dimulai"
+  else
+    echo "✗ $name gagal dimulai; periksa $LOG_DIR/$name.log" >&2
+    exit 1
+  fi
+}
+
+start_port_service() {
+  local name="$1"
+  local port="$2"
+  local directory="$3"
+  shift 3
+
+  if port_open "$port"; then
+    echo "✓ $name sudah aktif di port $port"
+    return
+  fi
+
+  start_process "$name" "$directory" "$@"
+
+  local attempt
+  for attempt in {1..30}; do
+    if port_open "$port"; then
+      echo "  port $port siap"
+      return
+    fi
+    sleep 1
+  done
+
+  echo "✗ $name tidak membuka port $port; periksa $LOG_DIR/$name.log" >&2
+  exit 1
+}
+
+require_runtime_files() {
+  local with_whatsapp="$1"
+  local missing=0
+  for file in \
+    "$ROOT_DIR/backend/.env" \
+    "$ROOT_DIR/frontend/.env" \
+    "$ROOT_DIR/mobile/.env.local"; do
+    if [[ ! -f "$file" ]]; then
+      echo "Konfigurasi belum ada: $file" >&2
+      missing=1
+    fi
+  done
+  if [[ "$with_whatsapp" == "true" && ! -f "$ROOT_DIR/whatsapp-service/.env" ]]; then
+    echo "Konfigurasi belum ada: $ROOT_DIR/whatsapp-service/.env" >&2
+    missing=1
+  fi
+
+  if [[ "$missing" -ne 0 ]]; then
+    echo "Ikuti bagian Quick start di README.md terlebih dahulu." >&2
+    exit 1
+  fi
+}
+
+validate_shared_secrets() {
+  local backend_token sidecar_token backend_secret sidecar_secret
+  backend_token="$(awk -F= '/^WHATSAPP_SERVICE_TOKEN=/{sub(/^[^=]*=/, ""); print; exit}' "$ROOT_DIR/backend/.env")"
+  sidecar_token="$(awk -F= '/^WHATSAPP_SERVICE_TOKEN=/{sub(/^[^=]*=/, ""); print; exit}' "$ROOT_DIR/whatsapp-service/.env")"
+  backend_secret="$(awk -F= '/^WHATSAPP_WEBHOOK_SECRET=/{sub(/^[^=]*=/, ""); print; exit}' "$ROOT_DIR/backend/.env")"
+  sidecar_secret="$(awk -F= '/^WHATSAPP_WEBHOOK_SECRET=/{sub(/^[^=]*=/, ""); print; exit}' "$ROOT_DIR/whatsapp-service/.env")"
+
+  if [[ ${#backend_token} -lt 32 || "$backend_token" != "$sidecar_token" || ${#backend_secret} -lt 32 || "$backend_secret" != "$sidecar_secret" ]]; then
+    echo "Secret WhatsApp kosong atau tidak sinkron." >&2
+    echo "Jalankan ./scripts/rotate-local-secrets lalu coba lagi." >&2
+    exit 1
+  fi
+}
+
+ensure_ollama() {
+  if port_open 11434; then
+    echo "✓ Ollama sudah aktif di port 11434"
+    return
+  fi
+
+  if ! command -v ollama >/dev/null 2>&1; then
+    echo "✗ Ollama belum terpasang. Fitur fallback tetap tersedia, tetapi AI lokal nonaktif." >&2
+    return
+  fi
+
+  start_port_service "ollama" 11434 "$ROOT_DIR" ollama serve
+}
+
+start_all() {
+  local with_expo="${1:-false}"
+  local allow_lan="${2:-false}"
+  local with_whatsapp="${3:-false}"
+  local bind_host="127.0.0.1"
+  if [[ "$allow_lan" == "true" ]]; then
+    local demo_login
+    demo_login="$(awk -F= '/^DEMO_LOGIN_ENABLED=/{sub(/^[^=]*=/, ""); gsub(/[[:space:]"]/, ""); print tolower($0); exit}' "$ROOT_DIR/backend/.env")"
+    if [[ "$demo_login" == "true" || "$demo_login" == "1" || "$demo_login" == "yes" || "$demo_login" == "on" ]]; then
+      echo "✗ Mode LAN ditolak selama demo login aktif. Matikan DEMO_LOGIN_ENABLED terlebih dahulu." >&2
+      exit 1
+    fi
+
+    bind_host="0.0.0.0"
+    echo "⚠ Mode LAN aktif. Pastikan jaringan tepercaya."
+  fi
+
+  require_runtime_files "$with_whatsapp"
+  if [[ "$with_whatsapp" == "true" ]]; then
+    validate_shared_secrets
+  fi
+  ensure_ollama
+
+  start_port_service "backend" 8000 "$ROOT_DIR/backend" php artisan serve --host="$bind_host" --port=8000
+  start_process "queue" "$ROOT_DIR/backend" php artisan queue:work --sleep=3 --tries=3 --timeout=120
+  start_process "scheduler" "$ROOT_DIR/backend" php artisan schedule:work
+  start_port_service "reverb" 8080 "$ROOT_DIR/backend" php artisan reverb:start --host="$bind_host" --port=8080
+  if [[ "$with_whatsapp" == "true" ]]; then
+    start_port_service "whatsapp" 3100 "$ROOT_DIR/whatsapp-service" npm start
+  fi
+  start_port_service "frontend" 5173 "$ROOT_DIR/frontend" npm run dev -- --host="$bind_host" --port=5173
+
+  if [[ "$with_expo" == "true" ]]; then
+    start_port_service "expo" 8081 "$ROOT_DIR/mobile" env CI=1 npx expo start --lan --port 8081
+  fi
+
+  echo
+  status_all
+}
+
+stop_all() {
+  local name pid_file pid
+  for name in expo frontend whatsapp reverb scheduler queue backend ollama; do
+    if command -v tmux >/dev/null 2>&1 && tmux has-session -t "orvyn-$name" 2>/dev/null; then
+      tmux kill-session -t "orvyn-$name"
+      echo "✓ $name dihentikan"
+    fi
+
+    pid_file="$PID_DIR/$name.pid"
+    if [[ ! -f "$pid_file" ]]; then
+      continue
+    fi
+
+    pid="$(cat "$pid_file")"
+    if kill -0 "$pid" >/dev/null 2>&1; then
+      kill "$pid"
+      echo "✓ $name dihentikan"
+    fi
+    rm "$pid_file"
+  done
+}
+
+print_port_status() {
+  local label="$1"
+  local port="$2"
+  if port_open "$port"; then
+    printf '  %-18s online  :%s\n' "$label" "$port"
+  else
+    printf '  %-18s offline :%s\n' "$label" "$port"
+  fi
+}
+
+print_process_status() {
+  local label="$1"
+  local name="$2"
+  if pid_running "$name"; then
+    printf '  %-18s online\n' "$label"
+  else
+    printf '  %-18s offline/unmanaged\n' "$label"
+  fi
+}
+
+status_all() {
+  echo "ORVYN local status"
+  print_port_status "PostgreSQL" 5432
+  print_port_status "Laravel API" 8000
+  print_process_status "Queue worker" "queue"
+  print_process_status "Scheduler" "scheduler"
+  print_port_status "Reverb" 8080
+  print_port_status "WhatsApp" 3100
+  print_port_status "Ollama" 11434
+  print_port_status "Web Vite" 5173
+  print_port_status "Expo Metro" 8081
+  echo
+  echo "Web:        http://127.0.0.1:5173"
+  echo "API health: http://127.0.0.1:8000/up"
+  echo "Logs:       $LOG_DIR"
+}
+
+show_logs() {
+  local service="${1:-}"
+  if [[ -n "$service" ]]; then
+    if [[ ! -f "$LOG_DIR/$service.log" ]]; then
+      echo "Log tidak ditemukan: $LOG_DIR/$service.log" >&2
+      exit 1
+    fi
+    tail -n 100 -f "$LOG_DIR/$service.log"
+    return
+  fi
+
+  local log
+  for log in "$LOG_DIR"/*.log; do
+    [[ -e "$log" ]] || continue
+    echo "===== $(basename "$log") ====="
+    tail -n 20 "$log"
+  done
+}
+
+command="${1:-status}"
+shift || true
+
+case "$command" in
+  start)
+    with_expo=false
+    with_whatsapp=false
+    allow_lan=false
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --with-expo) with_expo=true ;;
+        --with-whatsapp) with_whatsapp=true ;;
+        --lan) allow_lan=true ;;
+        *) usage >&2; exit 1 ;;
+      esac
+      shift
+    done
+    start_all "$with_expo" "$allow_lan" "$with_whatsapp"
+    ;;
+  stop)
+    stop_all
+    ;;
+  restart)
+    with_expo=false
+    with_whatsapp=false
+    allow_lan=false
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --with-expo) with_expo=true ;;
+        --with-whatsapp) with_whatsapp=true ;;
+        --lan) allow_lan=true ;;
+        *) usage >&2; exit 1 ;;
+      esac
+      shift
+    done
+    stop_all
+    start_all "$with_expo" "$allow_lan" "$with_whatsapp"
+    ;;
+  status)
+    status_all
+    ;;
+  logs)
+    show_logs "${1:-}"
+    ;;
+  help|-h|--help)
+    usage
+    ;;
+  *)
+    usage >&2
+    exit 1
+    ;;
+esac

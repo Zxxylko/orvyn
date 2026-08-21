@@ -4,9 +4,9 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\HealthLog;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Carbon\Carbon;
 
 class HealthLogController extends Controller
 {
@@ -31,6 +31,20 @@ class HealthLogController extends Controller
     }
 
     /**
+     * Display a single health log owned by the current user.
+     */
+    public function show(HealthLog $healthLog)
+    {
+        if ($healthLog->user_id !== Auth::id()) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        return response()->json([
+            'data' => $healthLog,
+        ]);
+    }
+
+    /**
      * Store or update health metrics for a specific date (usually today).
      */
     public function store(Request $request)
@@ -48,11 +62,11 @@ class HealthLogController extends Controller
 
         // Find or create daily log
         $log = $user->healthLogs()->firstOrNew(['log_date' => $date]);
-        $isNew = !$log->exists;
+        $isNew = ! $log->exists;
 
         // Accumulate hydration or caffeine, or set values
         if (isset($validated['hydration_ml'])) {
-            $log->hydration_ml = $request->boolean('accumulate') 
+            $log->hydration_ml = $request->boolean('accumulate')
                 ? ($log->hydration_ml + $validated['hydration_ml'])
                 : $validated['hydration_ml'];
         }
@@ -139,28 +153,28 @@ class HealthLogController extends Controller
     {
         $user = Auth::user();
         $today = now()->toDateString();
-        
+
         $log = $user->healthLogs()->where('log_date', $today)->first();
 
         $hydration = $log ? $log->hydration_ml : 0;
         $caffeine = $log ? $log->caffeine_mg : 0;
         $screenTime = $log ? $log->screen_time_minutes : 0;
-        $sleep = $log ? (float)$log->sleep_hours : 0.0;
+        $sleep = $log ? (float) $log->sleep_hours : 0.0;
 
         $alerts = [];
-        
+
         // Hydration alerts
         if ($hydration < 1200) {
             $alerts[] = [
                 'type' => 'warning',
                 'category' => 'hydration',
-                'message' => 'Hidrasi sangat rendah. Minum air putih sekarang untuk menjaga konsentrasi ngoding.'
+                'message' => 'Hidrasi sangat rendah. Minum air putih sekarang untuk menjaga konsentrasi ngoding.',
             ];
         } elseif ($hydration < 2000) {
             $alerts[] = [
                 'type' => 'info',
                 'category' => 'hydration',
-                'message' => 'Hampir mencapai target. Minum 2-3 gelas air lagi untuk mencapai hidrasi optimal 2L.'
+                'message' => 'Hampir mencapai target. Minum 2-3 gelas air lagi untuk mencapai hidrasi optimal 2L.',
             ];
         }
 
@@ -169,13 +183,13 @@ class HealthLogController extends Controller
             $alerts[] = [
                 'type' => 'danger',
                 'category' => 'caffeine',
-                'message' => 'Konsumsi kafein berlebih (>400mg). Kurangi asupan kopi hari ini agar jantung tidak berdebar.'
+                'message' => 'Konsumsi kafein berlebih (>400mg). Kurangi asupan kopi hari ini agar jantung tidak berdebar.',
             ];
         } elseif ($caffeine > 200 && now()->hour >= 17) {
             $alerts[] = [
                 'type' => 'warning',
                 'category' => 'caffeine',
-                'message' => 'Kafein dikonsumsi sore hari. Ini berpotensi mengganggu jam tidur malam Anda.'
+                'message' => 'Kafein dikonsumsi sore hari. Ini berpotensi mengganggu jam tidur malam Anda.',
             ];
         }
 
@@ -184,7 +198,7 @@ class HealthLogController extends Controller
             $alerts[] = [
                 'type' => 'warning',
                 'category' => 'sleep',
-                'message' => 'Waktu tidur Anda tadi malam kurang dari 6 jam. Waspadai penurunan fokus saat menganalisis algoritma.'
+                'message' => 'Waktu tidur Anda tadi malam kurang dari 6 jam. Waspadai penurunan fokus saat menganalisis algoritma.',
             ];
         }
 
@@ -193,7 +207,7 @@ class HealthLogController extends Controller
             $alerts[] = [
                 'type' => 'warning',
                 'category' => 'screentime',
-                'message' => 'Screen time melampaui 8 jam. Terapkan istirahat 5 menit setiap kali Pomodoro selesai.'
+                'message' => 'Screen time melampaui 8 jam. Terapkan istirahat 5 menit setiap kali Pomodoro selesai.',
             ];
         }
 
@@ -203,8 +217,8 @@ class HealthLogController extends Controller
                 'caffeine_mg' => $caffeine,
                 'screen_time_minutes' => $screenTime,
                 'sleep_hours' => $sleep,
-                'alerts' => $alerts
-            ]
+                'alerts' => $alerts,
+            ],
         ]);
     }
 }

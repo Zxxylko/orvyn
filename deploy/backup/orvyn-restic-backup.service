@@ -1,0 +1,26 @@
+[Unit]
+Description=ORVYN encrypted offsite restic backup
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=orvyn-deploy
+Group=orvyn-deploy
+UMask=0077
+ExecStart=/opt/orvyn/deploy/scripts/run-offsite-backup.sh --env-file /etc/orvyn/.env.production
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+ReadOnlyPaths=/etc/orvyn /opt/orvyn
+ReadWritePaths=/var/lib/orvyn
+
+[Install]
+WantedBy=multi-user.target

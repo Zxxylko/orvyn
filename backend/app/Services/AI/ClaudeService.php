@@ -9,7 +9,9 @@ use Illuminate\Support\Facades\Log;
 class ClaudeService
 {
     private string $apiKey;
+
     private string $baseUrl;
+
     private string $model;
 
     public function __construct()
@@ -30,7 +32,7 @@ class ClaudeService
 
         try {
             $prompt = $this->buildBriefingPrompt($user, $context);
-            
+
             $response = Http::timeout(30)
                 ->withHeaders([
                     'x-api-key' => $this->apiKey,
@@ -43,42 +45,43 @@ class ClaudeService
                     'messages' => [
                         [
                             'role' => 'user',
-                            'content' => $prompt
-                        ]
-                    ]
+                            'content' => $prompt,
+                        ],
+                    ],
                 ]);
 
             if ($response->successful()) {
                 $result = $response->json();
                 $text = $result['content'][0]['text'] ?? '';
-                
+
                 // Try to parse JSON response
                 if (preg_match('/```json\s*(.*?)\s*```/s', $text, $matches)) {
                     $text = $matches[1];
                 }
-                
+
                 $parsed = json_decode($text, true);
-                
+
                 if (json_last_error() === JSON_ERROR_NONE && isset($parsed['summary'])) {
                     return $parsed;
                 }
-                
+
                 // If not JSON, treat as plain text summary
                 return [
                     'summary' => $text,
                     'health_metrics' => $this->calculateHealthMetrics($context),
-                    'recommended_adjustments' => []
+                    'recommended_adjustments' => [],
                 ];
             }
 
             Log::warning('Claude API failed, using fallback briefing', [
-                'status' => $response->status()
+                'status' => $response->status(),
             ]);
 
             return $this->fallbackBriefing($context);
 
         } catch (\Exception $e) {
             Log::error('Claude API error', ['error' => $e->getMessage()]);
+
             return $this->fallbackBriefing($context);
         }
     }
@@ -95,7 +98,7 @@ class ClaudeService
         $avgDifficulty = $context['avg_difficulty'] ?? 3;
 
         $deadlinesList = collect($upcomingDeadlines)
-            ->map(fn($task) => "- {$task['title']} (due {$task['deadline']})")
+            ->map(fn ($task) => "- {$task['title']} (due {$task['deadline']})")
             ->join("\n");
 
         return <<<PROMPT
@@ -174,7 +177,7 @@ PROMPT;
         if ($overdueCount > 0) {
             $summary .= " with {$overdueCount} overdue. Focus on catching up today.";
         } else {
-            $summary .= ". Stay focused and tackle your priorities.";
+            $summary .= '. Stay focused and tackle your priorities.';
         }
 
         return [

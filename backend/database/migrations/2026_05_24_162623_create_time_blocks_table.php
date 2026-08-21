@@ -21,7 +21,7 @@ return new class extends Migration
             $table->boolean('is_locked')->default(false);
             $table->enum('block_type', ['deep_work', 'lecture', 'sleep', 'break', 'routine'])->default('deep_work');
             $table->timestamps();
-            
+
             $table->index(['user_id', 'start_time']);
         });
     }

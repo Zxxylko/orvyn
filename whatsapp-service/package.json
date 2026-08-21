@@ -6,15 +6,17 @@
   "description": "ORVYN WhatsApp sidecar powered by Baileys",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "start": "tsx src/server.ts",
+    "start": "node dist/server.js",
+    "start:source": "tsx src/server.ts",
     "build": "tsc -p tsconfig.json",
-    "check": "tsc -p tsconfig.json --noEmit"
+    "check": "tsc -p tsconfig.json --noEmit",
+    "prestart": "npm run build"
   },
   "engines": {
     "node": ">=20"
   },
   "dependencies": {
-    "@whiskeysockets/baileys": "6.7.23",
+    "@whiskeysockets/baileys": "7.0.0-rc13",
     "dotenv": "^17.2.0",
     "express": "^5.1.0",
     "pino": "^9.7.0",

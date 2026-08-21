@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from '@/lib/router';
 import {
   AlertTriangle,
   BookOpen,

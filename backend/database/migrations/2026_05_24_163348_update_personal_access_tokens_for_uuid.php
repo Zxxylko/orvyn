@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::table('personal_access_tokens', function (Blueprint $table) {
             $table->dropColumn('tokenable_id');
         });
-        
+
         Schema::table('personal_access_tokens', function (Blueprint $table) {
             $table->uuid('tokenable_id')->after('id');
         });
@@ -28,7 +28,7 @@ return new class extends Migration
         Schema::table('personal_access_tokens', function (Blueprint $table) {
             $table->dropColumn('tokenable_id');
         });
-        
+
         Schema::table('personal_access_tokens', function (Blueprint $table) {
             $table->morphs('tokenable');
         });

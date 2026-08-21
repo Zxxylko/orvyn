@@ -36,7 +36,25 @@ return [
     ],
 
     'demo_login' => [
-        'enabled' => env('DEMO_LOGIN_ENABLED', env('APP_ENV') !== 'production'),
+        'enabled' => env('DEMO_LOGIN_ENABLED', false),
+    ],
+
+    'auth_tokens' => [
+        'expiration_minutes' => env('ORVYN_TOKEN_EXPIRATION_MINUTES', 60 * 24 * 30),
+    ],
+
+    'firebase' => [
+        'credentials' => env('FIREBASE_CREDENTIALS'),
+        'project_id' => env('FIREBASE_PROJECT_ID'),
+        'required_in_production' => env('FIREBASE_AUTH_REQUIRED', true),
+        'reauthentication_max_age_seconds' => (int) env('FIREBASE_REAUTH_MAX_AGE_SECONDS', 300),
+    ],
+
+    'expo_push' => [
+        'enabled' => env('EXPO_PUSH_ENABLED', true),
+        'url' => env('EXPO_PUSH_URL', 'https://exp.host/--/api/v2/push/send'),
+        'access_token' => env('EXPO_ACCESS_TOKEN'),
+        'timeout' => (int) env('EXPO_PUSH_TIMEOUT', 15),
     ],
 
 ];

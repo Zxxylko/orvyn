@@ -4,19 +4,22 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Support\DeviceName;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 
 class DemoAuthController extends Controller
 {
-    public function login(): JsonResponse
+    public function login(Request $request): JsonResponse
     {
         abort_unless(config('services.demo_login.enabled'), 403, 'Demo login is disabled.');
 
         $user = User::firstOrCreate(
             ['email' => 'demo@orvyn.app'],
             [
-                'firebase_uid' => 'demo_' . Str::random(20),
+                'firebase_uid' => 'demo_'.Str::random(20),
                 'name' => 'Demo Student',
                 'email_verified_at' => now(),
                 'preferences' => [
@@ -28,16 +31,49 @@ class DemoAuthController extends Controller
 
         $this->seedDemoData($user);
 
-        $user->tokens()->where('name', 'demo-login')->delete();
-        $token = $user->createToken('demo-login')->plainTextToken;
+        $deviceName = DeviceName::fromRequest($request);
+        $expiresAt = now()->addMinutes(
+            max(1, (int) config('services.auth_tokens.expiration_minutes'))
+        );
+
+        if ($this->usesBrowserSession($request)) {
+            Auth::guard('web')->login($user);
+            $request->session()->regenerate();
+
+            return response()->json([
+                'data' => [
+                    'user' => $user->fresh(),
+                    'session' => [
+                        'device_name' => $deviceName,
+                        'expires_at' => null,
+                        'type' => 'cookie',
+                    ],
+                ],
+                'message' => 'Demo login successful',
+            ]);
+        }
+
+        $tokenName = "demo-login: {$deviceName}";
+        $user->tokens()->whereIn('name', [$tokenName, 'demo-login'])->delete();
+        $token = $user->createToken($tokenName, ['*'], $expiresAt)->plainTextToken;
 
         return response()->json([
             'data' => [
                 'token' => $token,
                 'user' => $user->fresh(),
+                'session' => [
+                    'device_name' => $deviceName,
+                    'expires_at' => $expiresAt->toIso8601String(),
+                ],
             ],
             'message' => 'Demo login successful',
         ]);
+    }
+
+    private function usesBrowserSession(Request $request): bool
+    {
+        return $request->hasSession()
+            && hash_equals('web', strtolower((string) $request->header('X-Client-Platform')));
     }
 
     private function seedDemoData(User $user): void

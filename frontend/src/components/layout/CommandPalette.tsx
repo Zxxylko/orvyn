@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from '@/lib/router-hooks';
 import { AnimatePresence, motion } from 'framer-motion';
 import { briefingApi, getApiErrorMessage, timeBlockApi } from '@/lib/api';
 import {
