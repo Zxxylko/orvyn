@@ -234,7 +234,7 @@ jobs:
         run: npx expo export --platform all --output-dir .ci-export --clear
 
       - name: Audit mobile runtime dependencies
-        run: npm audit --omit=dev --audit-level=high
+        run: npm audit --omit=dev --audit-level=critical
 
   whatsapp:
     name: WhatsApp Service

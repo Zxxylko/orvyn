@@ -641,7 +641,7 @@ export function WhatsAppSettingsDialog({ open, onOpenChange }: WhatsAppSettingsD
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setSettings((current) => ({ ...current, enabled: !current.enabled }))}
+                  onClick={toggleEnabled}
                   className={cn('focus-ring inline-flex h-10 items-center gap-2 rounded-xl border px-4 text-xs font-bold transition', settings.enabled ? 'border-emerald-400/25 bg-emerald-400/10 text-emerald-200' : 'border-white/10 bg-white/[0.04] text-slate-400')}
                 >
                   <span className={cn('h-2 w-2 rounded-full', settings.enabled ? 'bg-emerald-300' : 'bg-slate-600')} />
