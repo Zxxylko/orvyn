@@ -4,10 +4,35 @@ import type { CreateHabitData } from '@/types/habit';
 import type { CreateCampusScheduleData } from '@/types/campus';
 import type { User } from '@/types/user';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
-const API_ORIGIN = new URL(API_BASE_URL, window.location.origin).origin;
-const CSRF_COOKIE_URL = import.meta.env.VITE_CSRF_COOKIE_URL
-  || `${API_ORIGIN}/sanctum/csrf-cookie`;
+function resolveApiConfig() {
+  const envUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+  let baseUrl = envUrl;
+
+  if (typeof window !== 'undefined' && window.location) {
+    try {
+      const url = new URL(envUrl, window.location.origin);
+      if (
+        (window.location.hostname === '127.0.0.1' && url.hostname === 'localhost') ||
+        (window.location.hostname === 'localhost' && url.hostname === '127.0.0.1')
+      ) {
+        url.hostname = window.location.hostname;
+        baseUrl = url.toString();
+      }
+    } catch {
+      // fallback to original
+    }
+  }
+
+  const origin = typeof window !== 'undefined'
+    ? new URL(baseUrl, window.location.origin).origin
+    : 'http://localhost:8000';
+
+  const csrfUrl = import.meta.env.VITE_CSRF_COOKIE_URL || `${origin}/sanctum/csrf-cookie`;
+
+  return { baseUrl, origin, csrfUrl };
+}
+
+const { baseUrl: API_BASE_URL, origin: API_ORIGIN, csrfUrl: CSRF_COOKIE_URL } = resolveApiConfig();
 
 export const AUTH_EXPIRED_EVENT = 'orvyn:auth-expired';
 
@@ -57,6 +82,12 @@ const csrfClient = axios.create({
   },
 });
 
+export function getXsrfCookie(): string | null {
+  if (typeof document === 'undefined') return null;
+  const match = document.cookie.match(new RegExp('(^|;\\s*)(?:XSRF-TOKEN)=([^;]*)'));
+  return match ? decodeURIComponent(match[2]) : null;
+}
+
 let csrfReady = false;
 let csrfRequest: Promise<void> | null = null;
 
@@ -65,7 +96,7 @@ export function ensureCsrfCookie(forceRefresh = false): Promise<void> {
     csrfReady = false;
   }
 
-  if (csrfReady) {
+  if (csrfReady && getXsrfCookie()) {
     return Promise.resolve();
   }
 
@@ -108,6 +139,10 @@ api.interceptors.request.use(
     const method = config.method?.toLowerCase() ?? 'get';
     if (!['get', 'head', 'options'].includes(method)) {
       await ensureCsrfCookie();
+      const token = getXsrfCookie();
+      if (token && config.headers) {
+        config.headers['X-XSRF-TOKEN'] = token;
+      }
       window.dispatchEvent(new CustomEvent('orvyn:sync-start'));
     }
 
