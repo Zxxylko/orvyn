@@ -32,7 +32,7 @@ function resolveApiConfig() {
   return { baseUrl, origin, csrfUrl };
 }
 
-const { baseUrl: API_BASE_URL, origin: API_ORIGIN, csrfUrl: CSRF_COOKIE_URL } = resolveApiConfig();
+const { baseUrl: API_BASE_URL, csrfUrl: CSRF_COOKIE_URL } = resolveApiConfig();
 
 export const AUTH_EXPIRED_EVENT = 'orvyn:auth-expired';
 
@@ -545,6 +545,98 @@ export const whatsappApi = {
   confirmVerification: (data: { code: string }) =>
     api.post('/integrations/whatsapp/verification/confirm', data),
   sendTest: () => api.post('/integrations/whatsapp/test'),
+};
+
+export interface GoogleWorkspaceStatus {
+  connected: boolean;
+  google_email: string;
+  google_name: string;
+  avatar_url?: string | null;
+  services: {
+    calendar: {
+      enabled: boolean;
+      name: string;
+      description: string;
+      last_synced_at?: string;
+      synced_items_count: number;
+    };
+    meet: {
+      enabled: boolean;
+      name: string;
+      description: string;
+      active_rooms: number;
+    };
+    drive: {
+      enabled: boolean;
+      name: string;
+      description: string;
+      synced: boolean;
+    };
+    tasks: {
+      enabled: boolean;
+      name: string;
+      description: string;
+      synced_items_count: number;
+    };
+  };
+}
+
+export const googleIntegrationApi = {
+  getStatus: () => api.get<ApiDataResponse<GoogleWorkspaceStatus>>('/integrations/google/status'),
+  syncCalendar: () =>
+    api.post<ApiDataResponse<{
+      synced_count: number;
+      synced_at: string;
+      events: Array<{
+        id: string;
+        title: string;
+        type: string;
+        day_of_week?: number;
+        start_time: string;
+        end_time: string;
+        room?: string;
+        category?: string;
+        google_calendar_url: string;
+      }>;
+      message: string;
+    }>>('/integrations/google/calendar/sync'),
+  createMeet: (data: { title: string; start_time?: string | null; duration_minutes?: number }) =>
+    api.post<ApiDataResponse<{
+      title: string;
+      meet_code: string;
+      meet_url: string;
+      instant_new_meet_url: string;
+      calendar_event_url: string;
+      scheduled_start: string;
+      duration_minutes: number;
+      created_by: string;
+      message: string;
+    }>>('/integrations/google/meet/create', data),
+  exportDrive: (data: { title: string; content: string; type?: 'doc' | 'sheet' | 'note' }) =>
+    api.post<ApiDataResponse<{
+      title: string;
+      type: string;
+      google_docs_create_url: string;
+      google_drive_url: string;
+      content_length: number;
+      exported_at: string;
+      message: string;
+    }>>('/integrations/google/drive/export', data),
+  syncTasks: () =>
+    api.post<ApiDataResponse<{
+      synced_count: number;
+      synced_at: string;
+      items: Array<{
+        id: string;
+        title: string;
+        notes?: string;
+        due?: string | null;
+        priority?: string;
+        type: string;
+      }>;
+      google_tasks_web_url: string;
+      message: string;
+    }>>('/integrations/google/tasks/sync'),
 };
 
 export default api;

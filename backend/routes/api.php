@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BriefingController;
 use App\Http\Controllers\Api\CampusScheduleController;
 use App\Http\Controllers\Api\DemoAuthController;
+use App\Http\Controllers\Api\GoogleIntegrationController;
 use App\Http\Controllers\Api\HabitController;
 use App\Http\Controllers\Api\HealthLogController;
 use App\Http\Controllers\Api\LivingExpenseController;
@@ -104,6 +105,17 @@ Route::prefix('v1')->group(function () {
             ->middleware('throttle:8,10,whatsapp-verification-confirm:');
         Route::post('integrations/whatsapp/test', [WhatsAppConnectionController::class, 'test'])
             ->middleware('throttle:6,1,whatsapp-test:');
+
+        // Google Workspace Integration
+        Route::get('integrations/google/status', [GoogleIntegrationController::class, 'status']);
+        Route::post('integrations/google/calendar/sync', [GoogleIntegrationController::class, 'syncCalendar'])
+            ->middleware('throttle:15,1,google-cal-sync:');
+        Route::post('integrations/google/meet/create', [GoogleIntegrationController::class, 'createMeet'])
+            ->middleware('throttle:20,1,google-meet:');
+        Route::post('integrations/google/drive/export', [GoogleIntegrationController::class, 'exportDrive'])
+            ->middleware('throttle:20,1,google-drive:');
+        Route::post('integrations/google/tasks/sync', [GoogleIntegrationController::class, 'syncTasks'])
+            ->middleware('throttle:15,1,google-tasks:');
 
         // Native mobile push notifications
         Route::get('push-notifications', [PushNotificationController::class, 'show']);

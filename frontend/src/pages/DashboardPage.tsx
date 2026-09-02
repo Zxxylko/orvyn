@@ -7,6 +7,7 @@ import { BurnoutGauge } from '@/components/dashboard/BurnoutGauge';
 import { FlowStateCard } from '@/components/dashboard/FlowStateCard';
 import { ChronotypeHeatmap } from '@/components/dashboard/ChronotypeHeatmap';
 import { TaskDetailDrawer } from '@/components/dashboard/TaskDetailDrawer';
+import { GoogleWorkspaceCard } from '@/components/integrations/GoogleWorkspaceCard';
 import { useTasks } from '@/hooks/useTasks';
 import { useBriefing } from '@/hooks/useBriefing';
 import { useAnalytics } from '@/hooks/useAnalytics';
@@ -23,13 +24,13 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { MotionCollapse, ScrollReveal } from '@/components/ui/motion';
 import { quietEase } from '@/components/ui/motion-config';
 
-type DashboardWidgetKey = 'stats' | 'daily' | 'assistant' | 'habits' | 'priority' | 'briefing' | 'timer' | 'trend' | 'streak' | 'flow' | 'burnout' | 'chronotype';
+type DashboardWidgetKey = 'stats' | 'daily' | 'google' | 'assistant' | 'habits' | 'priority' | 'briefing' | 'timer' | 'trend' | 'streak' | 'flow' | 'burnout' | 'chronotype';
 type PriorityColumnKey = 'today' | 'tomorrow' | 'later' | 'held';
 
-const defaultWidgetOrder: DashboardWidgetKey[] = ['stats', 'daily', 'assistant', 'habits', 'priority', 'briefing', 'timer', 'trend', 'streak', 'flow', 'burnout', 'chronotype'];
+const defaultWidgetOrder: DashboardWidgetKey[] = ['stats', 'daily', 'google', 'assistant', 'habits', 'priority', 'briefing', 'timer', 'trend', 'streak', 'flow', 'burnout', 'chronotype'];
 const rightWidgetKeys: DashboardWidgetKey[] = ['briefing', 'timer', 'trend', 'streak', 'flow', 'burnout', 'chronotype'];
 const widgetLabels: Record<DashboardWidgetKey, string> = {
-  stats: 'Statistik ringkas', daily: 'Langkah hari ini', assistant: 'Asisten hari ini', habits: 'Habit harian', priority: 'Papan prioritas',
+  stats: 'Statistik ringkas', daily: 'Langkah hari ini', google: 'Google Workspace', assistant: 'Asisten hari ini', habits: 'Habit harian', priority: 'Papan prioritas',
   briefing: 'Ringkasan harian', timer: 'Focus timer', trend: 'Tren fokus', streak: 'Penjaga streak', flow: 'Flow state', burnout: 'Burnout gauge', chronotype: 'Chronotype',
 };
 const priorityColumnLabels: Record<PriorityColumnKey, string> = { today: 'Hari Ini', tomorrow: 'Besok', later: 'Nanti', held: 'Ditahan' };
@@ -208,6 +209,10 @@ export function DashboardPage() {
 
       <DashboardWidget visible={widgetVisible('daily')} widgetKey="daily">
         <ScrollReveal amount={0.12}><StudentDailyFlow plan={assistPlan} /></ScrollReveal>
+      </DashboardWidget>
+
+      <DashboardWidget visible={widgetVisible('google')} widgetKey="google">
+        <ScrollReveal amount={0.12}><GoogleWorkspaceCard /></ScrollReveal>
       </DashboardWidget>
 
       <DashboardWidget visible={widgetVisible('assistant')} widgetKey="assistant">
