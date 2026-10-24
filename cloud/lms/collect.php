@@ -12,6 +12,12 @@ $diagnostics = ['http_statuses'=>[]];
 Http::globalResponseMiddleware(function ($response) use (&$diagnostics) {
     $status=(string)$response->getStatusCode();
     $diagnostics['http_statuses'][$status]=($diagnostics['http_statuses'][$status]??0)+1;
+    if ($status === '403') {
+        foreach (['Server','Content-Type','CF-Mitigated','X-Mitmproxy-Blocked-Reason'] as $header) {
+            $value=$response->getHeaderLine($header);
+            if (preg_match('/^[A-Za-z0-9 .;=\/_-]{1,100}$/D',$value)) $diagnostics['denial_headers'][$header]=$value;
+        }
+    }
     return $response;
 });
 function failureCode(Throwable $error): string {
