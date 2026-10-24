@@ -1,0 +1,14 @@
+{
+  "name": "orvyn/lms-cloud-reader",
+  "description": "Read-only Moodle collector for a free scheduled runner; no application database",
+  "license": "MIT",
+  "require": {
+    "php": "^8.3",
+    "illuminate/http": "^13.8",
+    "illuminate/support": "^13.8",
+    "illuminate/container": "^13.8",
+    "sabre/vobject": "^4.5"
+  },
+  "autoload": { "psr-4": { "App\\Services\\Lms\\": "../../backend/app/Services/Lms/" } },
+  "config": { "allow-plugins": false, "sort-packages": true, "platform": { "php": "8.3.0" } }
+}

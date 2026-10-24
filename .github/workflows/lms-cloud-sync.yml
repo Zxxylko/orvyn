@@ -1,0 +1,53 @@
+name: LMS cloud sync
+
+on:
+  schedule:
+    - cron: '7,22,37,52 * * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Read LMS and validate merge without writing account data
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: orvyn-lms-cloud
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.repository == 'Zxxylko/orvyn' && github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || vars.ORVYN_CLOUD_ENABLED == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2.37.2
+        with:
+          php-version: '8.3'
+          extensions: curl, dom, mbstring, xml
+          coverage: none
+      - name: Install isolated read-only collector
+        run: composer install --working-dir=cloud/lms --no-dev --no-plugins --no-scripts --prefer-dist --no-interaction --no-progress
+      - name: Verify cloud sync boundaries
+        run: |
+          node --test scripts/test/lms-cloud.test.cjs
+          php cloud/lms/test-collector.php
+      - id: auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.ORVYN_WIF_PROVIDER }}
+          service_account: ${{ vars.ORVYN_CLOUD_SERVICE_ACCOUNT }}
+          token_format: access_token
+          create_credentials_file: false
+      - name: Synchronize private account
+        run: node cloud/lms/sync.cjs
+        env:
+          GCP_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+          ORVYN_LMS_CONFIG: ${{ secrets.ORVYN_LMS_CONFIG }}
+          LMS_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}
