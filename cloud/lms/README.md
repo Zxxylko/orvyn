@@ -1,5 +1,7 @@
 # LMS sync while the Mac is off
 
+**Deployment status, 25 October 2026:** prepared but suspended. Hosted reads receive a Cloudflare challenge (HTTP 403) from the university; no cloud writes have been enabled. The local connector still requires the Mac. See [verification and next step](../../docs/qa/2026-10-25-lms-cloud-sync.md).
+
 The default-branch workflow `.github/workflows/lms-cloud-sync.yml` runs a read-only Moodle collector on standard GitHub-hosted Ubuntu, about every 15 minutes (UTC minutes 7, 22, 37, 52). It needs no running Mac, Laravel server, application database, APP_KEY, paid Firebase plan or GCP service-account key. Firebase stays on Spark with billing disabled and unlinked.
 
 The deployed connector is paired to the existing student's LMS source and Firebase UID. This is a single-account deployment, not a token provisioning service for other users. Each additional student needs their own verified credentials and separately scoped deployment.
